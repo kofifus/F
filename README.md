@@ -101,8 +101,7 @@ public static class EmployeeLogic {
 
   public static IEnumerable<string> GetEmployeePhones(string name) {
     var (ok, employee) = Store.Employees.Val[name];
-    if (!ok) return Enumerable.Empty<string>();
-    return employee.Phones;
+    return ok ? employee.Phones : Enumerable.Empty<string>();
   }
 }
 ```
