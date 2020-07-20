@@ -21,7 +21,7 @@ The purpose of the F package is to greatly simplify the creation of data (immuta
 <br><br>
 ## Components
 
-**FData**
+**[FData](https://github.com/kofifus/F/wiki/FData)**
 
 Deriving `FData` declares an object as Data - immutable with value semantics. Some core types (ie strings, Tuples etc) are FData even without directly deriving from the FData base.<br>
 An `FData` type/object my contain non-public mutable members as long as it is publically immutable.
