@@ -4,12 +4,12 @@ C# support for decoupling Data, state and Logic
 ## Motivation
 
 A desirable 'functional' programming paradign (as opposed to OOP) is one in which there is clear separation between Data, State and Logic:
-- **Data** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods to return different representations (views) of itself (ie the decimal or fration part of a real number), however its methods cannot change itself or interact with States or Logic.
+- **Data** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods to return different representations/deriviations (views) of itself (ie the decimal or fration part of a real number), however its methods do not interact with States, Logic or external resources.
 - **State** represents 'memory'. It is made of Data with clearly defined mechanisms for access and mutatation. It does not mutate other States or use any Logic. (Note that State is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is stateless ('pure') functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
-An OOP program will have objects of type 'Dog' that know their name and address and can 'GoHome()', while this design maybe useful for some scenarios it has major limitations in most common kind of software which deals with information and UI. Archiving/journaling/reasoning about state changes is difficult in OOP, as is refactoring/reusing logic and data as they are coupled together with the state.<br>
-A 'functional' paradigm will have an immutable 'DogRecord' (Data) having name and address, a separate 'DogsArchive' (State) keeping the current dog records and a backlog (ie of address changes), and a 'DogController' (Logic) that can fetch a dog record from the database and change it's location on a map etc.<br>
+An OOP program will have objects of type 'Dog' that know their name and address and can 'ChangeAddress()', while this design maybe useful for some scenarios it has major limitations in most common kind of software which deals with information and UI. Archiving/journaling/reasoning about state changes is difficult in OOP, as is refactoring/reusing logic and data as they are coupled together with the state.<br>
+A 'functional' paradigm will have an immutable 'DogRecord' (Data) having name and address, a separate 'DogsArchive' (State) keeping the current dog records and a backlog (ie of address changes), and a 'DogController' (Logic) that can fetch a dog record from the State and change it's address etc.<br>
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
@@ -109,6 +109,8 @@ public static class EmployeeLogic {
 
 Notes:
 - EmployeeLogic is Logic - a collection of static (pure) methods.<br>
+- In this sample the `Employees` state is part of a global `Store` this is common and convinient. Another way would be passing the `Store.Employees` State to each `EmployeeLogic` method.
+- In this sample we have a dedicated Logic for a single `Data` (`Employee`) however this is not mandatory and grouping of Logic methods is a design decision.
 - `AddEmployee` uses `Ref` to acquire a reference access to mutate the employees dictionary State and add/set an employee.
 Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `FLockedState` this operation is threadsafe (a lock is acquired internally).
 - Note the use of `+=` to add a (key, value) to the dictionary. `F` collections prefer operator overloading for adding/removing  (in the same way that basic `string` does) as they are more suiltable for immutable types.
@@ -150,6 +152,6 @@ public static void Main() {
 }
 ```
 Notes:
-- Main is also Logic
+- Main is also Logic.
 - Main is threadsafe as all objects are immutable. Locking is only used where a State is mutated.
 
