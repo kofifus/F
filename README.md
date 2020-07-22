@@ -5,7 +5,7 @@ C# support for decoupling Data, state and Logic
 
 A desirable 'functional' programming paradign (as opposed to OOP) is one in which there is clear separation between Data, State and Logic:
 - **Data** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods to return different representations/deriviations (views) of itself (ie the decimal or fration part of a real number), however its methods do not interact with States, Logic or external resources.
-- **State** represents 'memory'. It is made of Data with clearly defined mechanisms for access and mutatation. It does not mutate other States or use any Logic. (Note that State is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
+- **State** represents 'memory'. It is made of Data with clearly defined mechanisms for access and mutation. It does not mutate other States or use any Logic. (Note that State is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is stateless ('pure') functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
 An OOP program will have objects of type 'Dog' that know their name and address and can 'ChangeAddress()', while this design maybe useful for some scenarios it has major limitations in most common kind of software which deals with information and UI. Archiving/journaling/reasoning about state changes is difficult in OOP, as is refactoring/reusing logic and data as they are coupled together with the state.<br>
