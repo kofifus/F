@@ -3,13 +3,13 @@ C# support for decoupling Data, state and Logic
 <br><br>
 ## Motivation
 
-A desirable 'functional' programming paradign (as opposed to OOP) is one in which there is clear separation between Data, State and Logic:
+A desirable 'functional' programming paradign (as opposed to classic OOP) is one in which there is clear separation between Data, State and Logic:
 - **Data** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods returning it's values or their derivatives, and/or methods that return new mutations of itself. However its methods do not interact with States, Logic or external resources.
 - **State** represents 'memory'. Its only functionality is access and mutation of its internal Data storage. A State does not mutate other States or use any Logic. A State can be publically available or only passed to Logic where/as needed. (Note that State here is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is pure functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
-An OOP program will have objects of type 'Dog' that know their name and address and can 'ChangeAddress()', while this design maybe useful for some scenarios it has major limitations in most common kind of software which deals with information and UI. Archiving/journaling/reasoning about state changes is difficult in OOP, as is refactoring/reusing logic and data as they are coupled together with the state.<br>
-A 'functional' paradigm will have an immutable 'DogRecord' (Data) having name and address, a separate 'DogsArchive' (State) keeping the current dog records and a backlog (ie of address changes), and a 'DogController' (Logic) that can fetch a dog record from the State and change it's address etc.<br>
+An OOP program will have objects of type 'Employee ' that know their name and address and can 'ChangeAddress()', and a list etc of Employee objects storeing all instances. While this design maybe useful for some scenarios it has major limitations: Archiving/journaling/reasoning about state (Employee) changes is difficult, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state, etc<br>
+A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having name and address, a separate 'EmployeeArchive' State keeping the current dog records and a backlog (ie of address changes), and a 'HR' (Logic) that can ie fetch an Employee record from the Archive and change it's address.<br>
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
