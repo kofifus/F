@@ -8,44 +8,36 @@ A desirable 'functional' programming paradign (as opposed to classic OOP) is one
 - **State** represents 'memory'. Its only functionality is access and mutation of its internal Data storage. A State does not mutate other States or use any Logic. A State can be publically available or only passed to Logic where/as needed. (Note that State here is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is pure functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
-An OOP program will have objects of type 'Employee ' that know their name and address and can 'ChangeAddress()', and an archive of Employee objects storing all instances. While this design maybe useful for some scenarios it has major limitations: Archiving/journaling/reasoning about state (Employee) changes is difficult as there is no control on where/when such changes happen, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state.<br>
-A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having name and address, a separate 'EmployeeArchive' State keeping the current dog records with a a backlog (ie of address changes), and an 'HR' Logic that can ie fetch an Employee record from the Archive and change it's address.<br>
+An OOP program will have objects of type 'Employee' that know their name and address and can 'ChangeAddress()', and an collection of Employee objects storing all instances. While this design maybe useful for some scenarios it has major limitations: Archiving/journaling/reasoning about Employee changes is difficult as there is no control on where/when such changes happen, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state.<br>
+A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having name and address, a separate 'EmployeeArchive' State with clear access/mutation/archiving mechanisms, and an 'HR' Logic that can ie fetch an Employee record from the Archive and change it's address etc.<br>
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
-- Creating immutable data with value semantics is challenging as C# Objects are by default mutable (though the addition of read-only properties is a good step) and correctly implementing value semantics is not trivial . Immutable containers were recently added to .NET but they are cumbersome to use and have reference semantics. 
+- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial . Immutable containers were recently added to .NET but they are cumbersome to use and have reference semantics. 
 - Encapsulating a state with its access/mutation API is challenging though recent language additions can give good solutions.
 - Stateless logic can be expressed by static classes and static functions
 
-The purpose of the F package is to greatly simplify the creation of data (immutable objects with value semantics), and to provide a mechanism for creating, accessing and mutating states Without sacrificing efficency.
+The purpose of the F package is to greatly simplify the creation of Data (immutable objects with value semantics), and to provide a mechanism for creating, accessing and mutating States without sacrificing efficency.
 <br><br>
 ## Components
 
-**[FData](https://github.com/kofifus/F/wiki/FData)**
+**[Data](https://github.com/kofifus/F/wiki/Data)**
 
-Deriving `FData` declares an object as Data - immutable with value semantics. Some core types (ie strings, Tuples etc) are FData even without directly deriving from the FData base.<br>
-An `FData` type/object my contain non-public mutable members as long as it is publically immutable.
+Deriving `Data` declares an object as Data - immutable with value semantics. Some core types (ie strings, Tuples etc) are Data as is, records are also Data as long as their fields are read only and Data themselves.<br>
 
 
-**FRecord** 
+**F collections (Seq, Set, Map, Que, Arr)**
 
-Allow easy creation of `FData` types (records).
+`Data` versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
 
-**F collections (FList, FSet, FDict, FQueue, FArray)**
+**State**
 
-`FData` versions of commonn containers with enhanced API.
+Stores a `Data` object so that the _only_ way to access/mutate it is through clearly defined mechanisms. Two concrete implementations are provided - `LockedState` which provides thread safety by locking on mutation, and `JournaledLockedState` which also archive previous versions of the State.
 
-**FState**
+*FWrapper**
 
-Encapsulate an `FData` object so that the _only_ way to modify it is through clearly defined access/mutation mechanisms. Two concrete implementations are provided - `FLockedState` which provides thread safety by locking on mutation, and `FJournaledLockedState` which also archive previous versions of the State.
+Allow the easy creation of a new (`Data`) type which composes another (`Data`) type. 
 
-**FWrapper**
-
-Allow the easy creation of a new (`FData`) type which encapsulates another (`FData`) type. 
-
-**FComposer**
-
-Allow the creation of a new (`FData`) type which encapsulates another type which is not (`FData`) itself.  
 <br>
 ## Example
 
