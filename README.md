@@ -13,7 +13,7 @@ A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having na
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
-- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial . Immutable containers were recently added to .NET but they are cumbersome to use and have reference semantics. 
+- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial. .NET Immutable containers are cumbersome to use and have reference semantics. C# 9.0 records are helpful for create Data records. 
 - Encapsulating a state with its access/mutation API is challenging though recent language additions can give good solutions.
 - Stateless logic can be expressed by static classes and static functions
 
@@ -34,67 +34,60 @@ Deriving `Data` declares an object as Data - immutable with value semantics. Som
 
 Stores a `Data` object so that the _only_ way to access/mutate it is through clearly defined mechanisms. Two concrete implementations are provided - `LockedState` which provides thread safety by locking on mutation, and `JournaledLockedState` which also archive previous versions of the State.
 
-*FWrapper**
+*Wrapper**
 
-Allow the easy creation of a new (`Data`) type which composes another (`Data`) type. 
+Allow the easy creation of a new (`Data`) type which composes another (`Data`) type ('typedf').
 
 <br>
 ## Example
 
 **Data:**
 ```
-public class Employee : FRecord<Employee> {
-  public string Name { get; }
-  public readonly int Age;
-  public FSet<string> Phones { get; }
-  
-  public Employee(string name, int age, FSet<string> phones) => (this.Name, this.Age, this.Phones) = (name, age, phones);
-}
+record Employee(string Name, int Age, Set<string> Phones);
 ```
 
 Notes:
-- `FSet` is an immutable hashset with value semantics and other additions.<br>
-- Deriving from `FRecord` makes `Employee` an `FData` (immutable with value semantics), that is it gets `Equals`/`==`/`!=` and `GetHashCode` that uses all it's members. These are generated using reflection and cached in delegates for efficiency. This means that `Employee` can be ie stored in an `FSet` or be itself a key in an `FDict`.<br>
-- Deriving `FRecord` also gives `Employee` a `With` method that allows easy creation of mutations (ie `emp2 = emp1.With(x => x.Name, "newname")`). `With` expressions are resolved using reflection and cached in delegates for efficiency.<br>
-- `FRecord` will verify (in DEBUG mode) that all of `Employee`'s public fields/properties are publically readonly and `FData` themselves.<br>
+- `Set` is an immutable hashset with value semantics and other additions. This means `Employee` is `Data` - that is it has `Equals`/`==`/`!=` and `GetHashCode` that uses all it's members. This means that `Employee` can be ie stored in an `FSet` or be itself a key in an `FDict`.<br>
 <br>
 
 **State:**
 ```
-public static class Store {
-  public static readonly FLockedState<FDict<string, Employee>> Employees = FLockedState.Create(new FDict<string, Employee>());
+static class Store {
+  public static readonly LockedState<Map<string, Employee>> Employees = new(new());
 }
 ```
 
 Notes:
-- In this sample the `Employees` State is part of a global `Store` which is convinient. Another way would be passing the `Store.Employees` State to differen Logic methods where/as nedded.
-- `FLockedState` locks itself before allowing mutation so that the _only_ way to change it is threadsafe. It has three methods: `Ref` - locks and mutate, `In` - locks and allows readonly access, and `Val` - allow threadsafe readonly access of a possibly stale value.
+- In this sample the `Employees` State is part of a global `Store` which is convinient. Another way would be to pass an `Employees` State to differen Logic methods where/as nedded.
+- `LockedState` locks itself before allowing mutation so that the _only_ way to change it is threadsafe. It has three methods: `Ref` - locks and mutate, `In` - locks and allows readonly access, and `Val` - allow threadsafe readonly access of a possibly stale value.
 Using `Ref` and `In` hides locking and eliminate multithreading issues where locking was forgotten. Using 'Val' whereever stale values can be tolerated prevents unecessary locking while preserving thready safety.
-- `VDict` is an immutable dictionary with value semantics and other additions. 
+- `Map` is an immutable dictionary with value semantics and other additions. 
 <br>
 
 **Logic:**
 ```
-public static class EmployeeLogic {
+static class EmployeeLogic {
   public static void AddEmployee(Employee employee) {
-    Store.Employees.Ref((ref FDict<string, Employee> storeEmployees) => {
+    Store.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
       storeEmployees += (employee.Name, employee);
     });
   }
 
   public static bool AddEmployeePhone(string name, string phone) {
-    return Store.Employees.Ref((ref FDict<string, Employee> storeEmployees) => {
-      var (ok, newStoreEmployees) = storeEmployees.With(name, x => x.Phones, phones => phones + phone);
-      if (ok) storeEmployees = newStoreEmployees; // change the State
-      return ok;
+    return Store.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
+      var employee = storeEmployees[name];
+      if (employee is null) return false;
+      var mutatedEmployee = employee with { Phones = employee.Phones + phone };
+      storeEmployees += (name, mutatedEmployee);
+      return true;
     });
   }
 
-  public static (bool, Employee) GetEmployee(string name) => Store.Employees.Val[name];
+  public static Employee? GetEmployee(string name) => Store.Employees.Val[name];
 
   public static IEnumerable<string> GetEmployeePhones(string name) {
-    var (ok, employee) = Store.Employees.Val[name];
-    return ok ? employee.Phones : Enumerable.Empty<string>();
+    var employee = GetEmployee(name);
+    return employee is object ? employee.Phones : Enumerable.Empty<string>();
   }
 }
 ```
@@ -103,43 +96,35 @@ Notes:
 - EmployeeLogic is Logic - a collection of static (pure) methods.<br>
 - In this simple sample we have a dedicated Logic for a single `State` (`Employees`) however this is not mandatory and the grouping of Logic methods is a design decision.
 - `AddEmployee` uses `Ref` to acquire a reference access to mutate the employees dictionary State and add/set an employee.
-Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `FLockedState` this operation is threadsafe (a lock is acquired internally).
-- Note the use of `+=` to add a (key, value) to the dictionary. `F` collections prefer operator overloading for adding/removing  (in the same way that basic `string` does) as they are more suiltable for immutable types.
-- `AddEmployeePhone` similary uses a `Ref` to mutate `Store.Employees` in a threadsafe way. It uses `With` to calculate and return a mutation of storeEmployees with a mutated Phones property, and assign it to back to the State.
-- Note the way success is returned in `ok`. Using C# Nullable reference types (`#nullable enable`), gives a compiler warning if you try to access `storeEmployees` without checking that `ok` is true. `F` uses this pattern for all collections boundary checks and does not throw exceptions in those cases. 
-- `GetEmployee` and `GetEmployeePhones` uses `Val` to get access to the current value of `Store.Employees`. No lock is taken in this case so the result may be stale which is fine in this case. However the call is still threadsafe as the returned value (being an `FData`) is immutable. This kind of threadsafe access to possibly stale values wherever possible adds great effiency.
+Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `LockedState` this operation is threadsafe (a lock is acquired internally).
+- Note the use of `+=` to add a (key, value) to the Map (dictionary). `F` collections prefer operator overloading for adding/removing  (in the same way that basic `string` does) as they are more suitable and convineient for immutable types.
+- `AddEmployeePhone` similary uses a `Ref` to mutate `Employees` in a threadsafe way. It uses `with` to calculate and return a mutation of storeEmployees with a mutated Phones property, and assign it to back to the State. 
+- `GetEmployee` and `GetEmployeePhones` uses `Val` to get access to the current value of `Employees`. No lock is taken in this case so the result may be stale which is fine in this case. However the call is still threadsafe as the returned value (being an `FData`) is immutable. This kind of threadsafe access to possibly stale values wherever possible adds great effiency.
 <br>
 
 **Main:**
 
 ```
 public static void Main() {
-  var dave = new Employee("Dave", 30, new FSet<string>("123"));
+  static void Log(string s) { Console.WriteLine(s); }
 
-  var john = dave.With(x => x.Name, "John");
-  Console.WriteLine("dave RefrenceEquals john ? " + (Object.ReferenceEquals(dave, john) ? "true" : "false")); // false
-  Console.WriteLine("dave==john ? " + (dave==john ? "true" : "false")); // false
+  var dave = new Employee("Dave", 30, new Set<string>("123"));
+  var john = dave with { Name = "John" };
 
-  var john1 = dave.With(x => x.Name, "John");
-  Console.WriteLine("john RefrenceEquals john1 ? " + (Object.ReferenceEquals(john, john1) ? "true" : "false")); // false
-  Console.WriteLine("john==john1 ? " + (john == john1 ? "true" : "false")); // true
-  
   EmployeeLogic.AddEmployee(john);
-  var (ok, storeJohn) = EmployeeLogic.GetEmployee("John");
-  if (ok) {
-    Console.WriteLine("john RefrenceEquals storeJohn ? " + (Object.ReferenceEquals(john, storeJohn) ? "true" : "false")); // true
-    Console.WriteLine("john==storeJohn ? " + (john == storeJohn ? "true" : "false")); // true
-  }
-  
+  var storeJohn = EmployeeLogic.GetEmployee("John");
+  if (storeJohn is null) return;
+  Log("john RefrenceEquals storeJohn ? " + (Object.ReferenceEquals(john, storeJohn) ? "true" : "false")); // true
+  Log("john==storeJohn ? " + (john == storeJohn ? "true" : "false")); // true
+
   EmployeeLogic.AddEmployeePhone(john.Name, "456");
-  var (ok1, storeJohn1) = EmployeeLogic.GetEmployee("John");
-  if (ok1) {
-    Console.WriteLine("storeJohn RefrenceEquals storeJohn1 ? " + (Object.ReferenceEquals(storeJohn, storeJohn1) ? "true" : "false")); // false
-    Console.WriteLine("storeJohn==storeJohn1 ? " + (storeJohn == storeJohn1 ? "true" : "false")); // false
-  }
-  
+  var storeJohn1 = EmployeeLogic.GetEmployee("John");
+  if (storeJohn1 is null) return;
+  Log("storeJohn RefrenceEquals storeJohn1 ? " + (Object.ReferenceEquals(storeJohn, storeJohn1) ? "true" : "false")); // false
+  Log("storeJohn==storeJohn1 ? " + (storeJohn == storeJohn1 ? "true" : "false")); // false
+
   var storeJohnPhones = EmployeeLogic.GetEmployeePhones(john.Name);
-  Console.WriteLine(string.Join(",", storeJohnPhones)); // 123, 456
+  Log(string.Join(",", storeJohnPhones)); // 123, 456
 }
 ```
 Notes:
