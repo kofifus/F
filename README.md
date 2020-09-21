@@ -108,6 +108,8 @@ Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `L
 public static void Main() {
   static void Log(string s) { Console.WriteLine(s); }
 
+  Data.AssertIsData();
+  
   var dave = new Employee("Dave", 30, new Set<string>("123"));
   var john = dave with { Name = "John" };
 
@@ -130,4 +132,6 @@ public static void Main() {
 Notes:
 - Main is also Logic.
 - Main is threadsafe as all objects are immutable. Locking is only used where a State is mutated.
+- `Data.AssertIsData()` does nothing in Release mode. In Debug mode it will reflect over all the classes in the assembly and throw exceptions where it detects deviations from F standards. This is useful to enusre the entire project uses a 'functional' paradigm
+
 
