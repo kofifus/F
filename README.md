@@ -34,7 +34,7 @@ Deriving `Data` declares an object as Data - immutable with value semantics. Som
 
 Stores a `Data` object so that the _only_ way to access/mutate it is through clearly defined mechanisms. Two concrete implementations are provided - `LockedState` which provides thread safety by locking on mutation, and `JournaledLockedState` which also archive previous versions of the State.
 
-*Wrapper**
+**Wrapper**
 
 Allow the easy creation of a new (`Data`) type which composes another (`Data`) type ('typedf').
 
