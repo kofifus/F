@@ -37,16 +37,13 @@ Stores a `Data` object so that the _only_ way to access/mutate it is through cle
 **Wrapper**
 
 Allow the easy creation of a new (`Data`) type which composes another (`Data`) type ('typedf').
-
-<br>
-
+<br><br>
 ## Usage
 
-While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. In this case your code should not have non-static classes at all (!) - all Data is in `record`s, all State and Logic is in static classes. A debug mode runtime verifier/helper is included `Data.AssertF()` that will try to throw exceptions where `F` directives are not followed (ie mutable record members).   
+While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. In this case your code should not have non-static classes at all (!) - all Data is in `record`s, all State and Logic are in static classes.<br>
+A debug mode runtime verifier/helper is included `Data.AssertF()` that will try to throw exceptions where `F` directives are not followed (ie mutable record members).<br> 
 Inevitably in many cases, some .NET types that breaks the coupling of Data/State/Logic have to be used. In some of these cases it is possible to encapsulate these types inside a `Data` type and move their mutable part to a `State` (an example is given of encapsulating `Task` in this way). Other types cannot be converted (ie classes inheriting `EntityFrameworkCore.DbContext` which is not immutable) and have to be managed carefuly. 
-
-<br>
-
+<br><br>
 ## Example
 
 **Data:**
