@@ -13,22 +13,23 @@ A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having na
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
-- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial. .NET Immutable containers are cumbersome to use and have reference semantics. C# 9.0 records are helpful for create Data records. 
-- Encapsulating a state with its access/mutation API is challenging though recent language additions can give good solutions.
-- Stateless logic can be expressed by static classes and static functions
+- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial. .NET Immutable containers are cumbersome to use and have reference semantics. 
+- Encapsulating a state with its access/mutation API is challenging.
+- Stateless logic can be expressed by static classes and functions
 
-The purpose of the F package is to greatly simplify the creation of Data (immutable objects with value semantics), and to provide a mechanism for creating, accessing and mutating States without sacrificing efficency.
+The purpose of the F package is to greatly simplify the creation of Data, and to provide a mechanism for creating, accessing and mutating States without sacrificing efficency.
 <br><br>
 ## Components
 
 **[Data](https://github.com/kofifus/F/wiki/Data)**
 
-Deriving `Data` declares an object as Data - immutable with value semantics. Some core types (ie strings, Tuples etc) are Data as is, records are also Data as long as their fields are read only and Data themselves.<br>
+Data in `F` is represented by C# 9 records where all fields are read only and Data themselves. Some core types (ie strings, Tuples etc) are considered Data as well.<br>
 
+A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
 **F collections (Seq, Set, Map, Que, Arr)**
 
-`Data` versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
+Data (immutable objects with value semantics) versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
 
 **State**
 
@@ -38,7 +39,7 @@ Stores a `Data` object so that the _only_ way to access/mutate it is through cle
 
 While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. In this case your code should not have non-static classes at all (!) - all Data is in `record`s, all State and Logic are in static classes.<br>
 A debug mode runtime verifier/helper is included (`Data.AssertF()`) that will try to throw exceptions where `F` directives are not followed (ie mutable record members).<br> 
-Inevitably in many cases, some .NET types that are not Data have to be used. In some of these cases it is possible to encapsulate these types inside a `Data` type and move their mutable part to a `State` (an example is given of encapsulating `Task` in this way). Other types cannot be converted (ie classes inheriting `EntityFrameworkCore.DbContext` which is not immutable) and have to be managed carefuly. 
+Inevitably in many cases, some .NET types that are not Data have to be used. In some of these cases it is possible to encapsulate these types inside a `Data` type and move their mutable part to a `State` (an example is given of encapsulating `JToken` in this way). Other types cannot be converted (ie classes inheriting `EntityFrameworkCore.DbContext` which is not immutable) and have to be managed carefuly. 
 <br><br>
 ## Example
 
