@@ -49,7 +49,7 @@ record Employee(string Name, int Age, Set<string> Phones);
 ```
 
 Notes:
-- `Set` is an immutable hashset with value semantics and other additions. This means `Employee` is `Data` - that is it has `Equals`/`==`/`!=` and `GetHashCode` that uses all it's members. This means that `Employee` can be ie stored in an `FSet` or be itself a key in an `FDict`.<br>
+- `Set` is a Data version of list. This means `Employee` is Data as well.and so can be ie stored in a `Set` or be itself a key in an `Map`.<br>
 <br>
 
 **State:**
