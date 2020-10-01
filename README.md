@@ -13,7 +13,7 @@ A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having na
 This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
-- Creating immutable data with value semantics is challenging and correctly implementing value semantics is not trivial. .NET Immutable containers are cumbersome to use and have reference semantics. 
+- Creating immutable data with value semantics is challenging. C# immutable containers are cumbersome to use and have reference semantics. 
 - Encapsulating a state with its access/mutation API is challenging.
 - Stateless logic can be expressed by static classes and functions
 
