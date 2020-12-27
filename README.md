@@ -23,7 +23,7 @@ The purpose of the F package is to greatly simplify the creation of Data, and to
 
 **[Data](https://github.com/kofifus/F/wiki/Data)**
 
-Data in `F` is represented by either records (C# 9) or classes implementing `IEquatable<T>`, where all fields are read only and Data themselves. Some core types (ie strings, Tuples etc) are considered Data as well.<br>
+Data in `F` is represented by either records (C# 9) or classes implementing `IEquatable<T>`, where all fields are read only and are Data themselves. Some core types (ie strings, Tuples etc) are considered Data as well.<br>
 
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
