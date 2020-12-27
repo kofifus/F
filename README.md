@@ -23,13 +23,13 @@ The purpose of the F package is to greatly simplify the creation of Data, and to
 
 **[Data](https://github.com/kofifus/F/wiki/Data)**
 
-Data in `F` is represented by C# 9 records where all fields are read only and Data themselves. Some core types (ie strings, Tuples etc) are considered Data as well.<br>
+Data in `F` is represented by either records (C# 9) or classes implementing `IEquatable<T>`, where all fields are read only and Data themselves. Some core types (ie strings, Tuples etc) are considered Data as well.<br>
 
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
 **F collections (Seq, Set, Map, Que, Arr)**
 
-Data (immutable objects with value semantics) versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
+Data (immutable with value semantics) versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
 
 **State**
 
@@ -49,14 +49,16 @@ record Employee(string Name, int Age, Set<string> Phones);
 ```
 
 Notes:
-- `Set` is a Data version of list. This means `Employee` is Data as well.and so can be ie stored in a `Set` or be itself a key in an `Map`.<br>
+- `Set` is a Data version of List. This means `Employee` is Data as well and so can be ie stored in a `Set` or be itself a key in an `Map`.<br>
 <br>
 
 **State:**
 ```
-static class Store {
-  public static readonly LockedState<Map<string, Employee>> Employees = new(new());
+record Store {
+  public readonly LockedState<Map<string, Employee>> Employees = new(new());
 }
+
+static readonly Store S = new();
 ```
 
 Notes:
@@ -68,15 +70,15 @@ Using `Ref` and `In` hides locking and eliminate multithreading issues where loc
 
 **Logic:**
 ```
-static class EmployeeLogic {
+static class EmployeeLogic
   public static void AddEmployee(Employee employee) {
-    Store.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
+    S.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
       storeEmployees += (employee.Name, employee);
     });
   }
 
   public static bool AddEmployeePhone(string name, string phone) {
-    return Store.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
+    return S.Employees.Ref((ref Map<string, Employee> storeEmployees) => {
       var employee = storeEmployees[name];
       if (employee is null) return false;
       var mutatedEmployee = employee with { Phones = employee.Phones + phone };
@@ -85,7 +87,7 @@ static class EmployeeLogic {
     });
   }
 
-  public static Employee? GetEmployee(string name) => Store.Employees.Val[name];
+  public static Employee? GetEmployee(string name) => S.Employees.Val[name];
 
   public static IEnumerable<string> GetEmployeePhones(string name) {
     var employee = GetEmployee(name);
