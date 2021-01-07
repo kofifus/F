@@ -31,7 +31,7 @@ A debug runtime verifier is provided to assert all types in a solution are Data 
 
 Data (immutable with value semantics) versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
 
-**State**
+**[State](https://github.com/kofifus/F/wiki/State)**
 
 Stores a Data object so that the _only_ way to access/mutate it is through clearly defined mechanisms. Two concrete implementations are provided - `LockedState` which provides thread safety by locking on mutation, and `JournaledLockedState` which also archive previous versions of the State.
 
