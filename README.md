@@ -99,8 +99,8 @@ static class EmployeeLogic
 Notes:
 - EmployeeLogic is Logic - a collection of static (pure) methods.<br>
 - In this simple sample we have a dedicated Logic for a single `State` (`Employees`) however this is not mandatory and the grouping of Logic methods is a design decision.
-- `AddEmployee` uses `Ref` to acquire a reference access to mutate the employees dictionary State and add/set an employee.
-Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `LockedState` this operation is threadsafe (a lock is acquired internally).
+- `AddEmployee` uses `Ref` to acquire a reference access to mutate the employees State and add/set an employee.
+Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is a `LockedState` this operation is threadsafe (a lock is acquired internally).
 - Note the use of `+=` to add a (key, value) to the Map (dictionary). `F` collections prefer operator overloading for adding/removing  (in the same way that basic `string` does) as they are more suitable and convineient for immutable types.
 - `AddEmployeePhone` similary uses a `Ref` to mutate `Employees` in a threadsafe way. It uses `with` to calculate and return a mutation of storeEmployees with a mutated Phones property, and assign it to back to the State. 
 - `GetEmployee` and `GetEmployeePhones` uses `Val` to get access to the current value of `Employees`. No lock is taken in this case so the result may be stale which is fine in this case. However the call is still threadsafe as the returned value (being an `FData`) is immutable. This kind of threadsafe access to possibly stale values wherever possible adds great effiency.
@@ -111,8 +111,7 @@ Using `Ref` is the _only_ way to change `Store.Employee` and becasue it is an `L
 ```
 public static void Main() {
   static void Log(string s) { Console.WriteLine(s); }
-
-  Data.AssertIsData();
+  Data.AssertF(); // optional, check for F compliance
   
   var dave = new Employee("Dave", 30, new Set<string>("123"));
   var john = dave with { Name = "John" };
@@ -136,6 +135,6 @@ public static void Main() {
 Notes:
 - Main is also Logic.
 - Main is threadsafe as all objects are immutable. Locking is only used where a State is mutated.
-- `Data.AssertIsData()` does nothing in Release mode. In Debug mode it will reflect over all the classes in the assembly and throw exceptions where it detects deviations from F standards. This is useful to enusre the entire project uses a 'functional' paradigm
+- `Data.AssertF()` does nothing in Release mode. In Debug mode it will reflect over all the classes in the assembly and throw exceptions where it detects deviations from F standards. This is useful to enusre the entire project uses a 'functional' paradigm
 
 
