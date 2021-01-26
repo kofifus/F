@@ -27,7 +27,7 @@ Data in `F` is represented by classes implementing `IEquatable<T>` (ie records),
 
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
-F also contains Data (immutable with value semantics) versions of commonn [collections](https://github.com/kofifus/F/wiki/Collections)s (Seq, Set, Map, Que, Arr) with enhanced API.
+F also contains Data (immutable with value semantics) versions of commonn [collections](https://github.com/kofifus/F/wiki/Collections) (Seq, Set, Map, Que, Arr) with enhanced API.
 
 **[State](https://github.com/kofifus/F/wiki/State)**
 
@@ -47,7 +47,7 @@ record Employee(string Name, int Age, Set<string> Phones);
 ```
 
 Notes:
-- `Set` is a Data version of List. This means `Employee` is Data as well and so can be ie stored in a `Set` or be itself a key in an `Map`.<br>
+- `Set` is a Data version of List, one of the F [collections](https://github.com/kofifus/F/wiki/Collections). This means `Employee` is Data as well and so can be ie stored in a `Set` or be itself a key in an `Map`.<br>
 <br>
 
 **State:**
