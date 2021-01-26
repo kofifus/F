@@ -8,9 +8,9 @@ A desirable 'functional' programming paradign (as opposed to classic OOP) is one
 - **[State](https://github.com/kofifus/F/wiki/State)** represents 'memory'. Its only functionality is access and mutation of its internal Data storage. A State does not mutate other States or use any Logic. A State can be publically available or only passed to Logic where/as needed. (Note that State here is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is pure functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
-An OOP program will have objects of type 'Employee' that know their name and address and can 'ChangeAddress()', and an collection of Employee objects storing all instances. While this design maybe useful for some scenarios it has major limitations: Archiving/journaling/reasoning about Employee changes is difficult as there is no control on where/when such changes happen, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state.<br>
-A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having name and address, a separate 'EmployeeArchive' State with clear access/mutation/archiving mechanisms, and an 'HR' Logic that can ie fetch an Employee record from the Archive and change it's address etc.<br>
-This is a vast topic but in short separating Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
+An OOP program will have objects of type 'Employee' that know their name and address and can 'ChangeAddress()', and a collection of Employee objects storing all instances. While this design may be useful for some scenarios it has major limitations: Archiving/journaling/reasoning about Employee changes is difficult as there is no control on where/when such changes happen, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state.<br>
+A 'functional' paradigm will have an immutable 'EmployeeRecord' (Data) having name and address, a separate 'EmployeeArchive' State with clear access/mutation/archiving mechanisms, and 'HR' Logic that can ie fetch an Employee record from the Archive and change it's address etc.<br>
+This is a vast topic but in short decoupling Data, State and Logic will give you programming superpowers.  A good summary of the bebefit of a such a 'functional' approach vs OOP can be found [here](https://clojure.org/about/state).
 
 C# was developed as an OOP language where data state and logic are strongly coupled in classes. This makes coding in such a 'functional' paradigm challenging:
 - Creating immutable data with value semantics is challenging. C# immutable containers are cumbersome to use and have reference semantics. 
@@ -28,6 +28,7 @@ Data in `F` is represented by classes implementing `IEquatable<T>` (ie records),
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
 **[Collections](https://github.com/kofifus/F/wiki/Collections)**  
+
 Data (immutable with value semantics) versions of .NET collections with enhanced API (Seq, Set, Map, Que, Arr).
 
 **[State](https://github.com/kofifus/F/wiki/State)**
@@ -36,8 +37,7 @@ Stores a Data object so that the _only_ way to access/mutate it is through clear
 <br><br>
 ## Usage
 
-While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. In this case your code should have _no_ non-static classes at all - all Data is in `record`s, all State and Logic are in static classes.<br>
-A debug mode runtime verifier/helper is included (`Data.AssertF()`) that will try to throw exceptions where `F` directives are not followed (ie mutable record members).<br> 
+While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. A debug mode runtime verifier/helper is included (`Data.AssertF()`) that will try to throw exceptions where `F` directives are not followed (ie mutable record members).<br><br>
 Inevitably in many cases, some .NET types that are not Data have to be used. In some of these cases it is possible to encapsulate these types inside a `Data` type and move their mutable part to a `State` (an example is given of encapsulating `JToken` in this way). Other types cannot be converted (ie classes inheriting `EntityFrameworkCore.DbContext` which is not immutable) and have to be managed carefuly. 
 <br><br>
 ## Example
