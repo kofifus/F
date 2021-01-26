@@ -27,7 +27,7 @@ Data in `F` is represented by classes implementing `IEquatable<T>` (ie records),
 
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
-**[Collections]**(https://github.com/kofifus/F/wiki/Collections)  
+**[Collections](https://github.com/kofifus/F/wiki/Collections)**  
 Data (immutable with value semantics) versions of .NET collections with enhanced API (Seq, Set, Map, Que, Arr).
 
 **[State](https://github.com/kofifus/F/wiki/State)**
