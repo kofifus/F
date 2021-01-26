@@ -32,7 +32,7 @@ F [collections](https://github.com/kofifus/F/wiki/Collections) (Seq, Set, Map, Q
 **[State](https://github.com/kofifus/F/wiki/State)**
 
 Stores a Data object so that the _only_ way to access/mutate it is through clearly defined mechanisms. Two concrete implementations are provided - `LockedState` which provides thread safety by locking on mutation, and `JournaledLockedState` which also archive previous versions of the State.
-
+<br><br>
 ## Usage
 
 While it will definietly work to mix in elements of `F` into a project, the recommended useage is to structure your entire code to decouple Data State and Logic and using `F` throughout. In this case your code should have _no_ non-static classes at all - all Data is in `record`s, all State and Logic are in static classes.<br>
