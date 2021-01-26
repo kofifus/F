@@ -4,8 +4,8 @@ C# support for decoupling Data, state and Logic
 ## Motivation
 
 A desirable 'functional' programming paradign (as opposed to classic OOP) is one in which there is clear separation between Data, State and Logic:
-- **Data** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods returning it's values or their derivatives, and/or methods that return new mutations of itself. However its methods do not interact with States, Logic or external resources.
-- **State** represents 'memory'. Its only functionality is access and mutation of its internal Data storage. A State does not mutate other States or use any Logic. A State can be publically available or only passed to Logic where/as needed. (Note that State here is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
+- **[Data](https://github.com/kofifus/F/wiki/Data)** represents 'values'. Data is immutable (cannot change once created) and has value semantics (for equality etc). Data may contain methods returning it's values or their derivatives, and/or methods that return new mutations of itself. However its methods do not interact with States, Logic or external resources.
+- **[State](https://github.com/kofifus/F/wiki/State)** represents 'memory'. Its only functionality is access and mutation of its internal Data storage. A State does not mutate other States or use any Logic. A State can be publically available or only passed to Logic where/as needed. (Note that State here is different from state/stateful/stateless with a lowercase 's' which are commonly used to mean 'with a value' etc)
 - **Logic** represents 'behaviour'. Is is pure functionality that links input (from UI etc), Data and State(s) and is the only entity that can mutate State(s).
 
 An OOP program will have objects of type 'Employee' that know their name and address and can 'ChangeAddress()', and an collection of Employee objects storing all instances. While this design maybe useful for some scenarios it has major limitations: Archiving/journaling/reasoning about Employee changes is difficult as there is no control on where/when such changes happen, multithreading is difficult as every Employee instance can change its internal state, refactoring/reusing logic and data is difficult as they are coupled together with the state.<br>
@@ -27,9 +27,7 @@ Data in `F` is represented by classes implementing `IEquatable<T>` (ie records),
 
 A debug runtime verifier is provided to assert all types in a solution are Data allowing user defined exceptions.
 
-**F collections (Seq, Set, Map, Que, Arr)**
-
-Data (immutable with value semantics) versions of commonn containers (List, HashSet, Dictionary, Queue, Array) with enhanced API.
+F also contains Data (immutable with value semantics) versions of commonn [collections](https://github.com/kofifus/F/wiki/Collections)s (Seq, Set, Map, Que, Arr) with enhanced API.
 
 **[State](https://github.com/kofifus/F/wiki/State)**
 
