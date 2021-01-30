@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Threading;
 
+// https://github.com/kofifus/F/wiki
+
 #nullable enable
 
 namespace F {
@@ -11,7 +13,7 @@ namespace F {
     override public void PreAction(in T _) => Monitor.Enter(theLock); 
     override public void PostAction(in T preVal, in T postVal) => Monitor.Exit(theLock);
     
-    public LockedState(T value, Action<T, T>? trigger=null) : base(value) {  }
+    public LockedState(T value) : base(value) {  }
     public static implicit operator T(LockedState<T> v) => v.Val;
   }
 

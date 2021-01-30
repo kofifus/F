@@ -6,11 +6,11 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
+// https://github.com/kofifus/F/wiki
+
 #nullable enable
 
 namespace F {
-
-  // docs: https://github.com/kofifus/F/wiki/FData
 
   public static class Data {
 

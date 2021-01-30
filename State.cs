@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
 
+// https://github.com/kofifus/F/wiki
+
 #nullable enable
 
 namespace F {

@@ -6,10 +6,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 using static F.Data;
 
+// https://github.com/kofifus/F/wiki
+
 #nullable enable
+
 namespace F {
 
   [JsonConverter(typeof(JsonFCollectionConverter))]
