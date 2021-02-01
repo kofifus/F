@@ -3,7 +3,7 @@ C# support for decoupling Data, state and Logic
 <br><br>
 ## Documetaion
 
-See the [wiki](https://github.com/kofifus/F/wiki)
+Please see the [wiki](https://github.com/kofifus/F/wiki)
 <br><br>
 ## Installation
 
