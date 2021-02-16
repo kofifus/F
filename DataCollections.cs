@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Reflection;
 using Newtonsoft.Json;
 using static F.Data;
@@ -17,9 +18,9 @@ namespace F {
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Seq<T> : IEnumerable<T>, IEnumerable where T : notnull {
     [FIgnore] readonly ImmutableList<T> composed;
-    [FIgnore] int? hashCache;
+    [FIgnore] HashCode? hashCache;
 
-    Seq(ImmutableList<T> composed) => this.composed = composed;
+    Seq(ImmutableList<T> composed, HashCode? hashCode=null) => (this.composed, this.hashCache) = (composed, hashCode);
     Seq(Seq<T> seq) => this.composed = seq.composed;
 
     public Seq() : this(ImmutableList<T>.Empty) { }
@@ -30,8 +31,11 @@ namespace F {
 
     public bool Equals(Seq<T>? obj) => obj is not null && GetHashCode()==obj.GetHashCode() && composed.SequenceEqual(obj.composed);
     override public int GetHashCode() {
-      if (hashCache is null) hashCache=composed.Aggregate(0, (total, next) => HashCode.Combine(total, next));
-      return (int)hashCache;
+      if (hashCache is null) {
+        hashCache = new HashCode();
+        foreach (var v in composed) hashCache.Value.Add(v);
+      }
+      return hashCache.Value.ToHashCode();
     }
 
     public static Seq<T> operator +(Seq<T> o, T v) => o.Add(v);
@@ -78,8 +82,16 @@ namespace F {
     public bool IsEmpty { get { return composed.IsEmpty; } }
     public int Count { get { return composed.Count; } }
 
-    public Seq<T> Add(T value) => new(composed.Add(value));
-    public Seq<T> Add(IEnumerable<T> items) => new(composed.AddRange(items));
+    public Seq<T> Add(T value) { 
+      var res = new Seq<T>(composed.Add(value), hashCache); 
+      if (res.hashCache is object) res.hashCache.Value.Add(value); 
+      return res; 
+    }
+    public Seq<T> Add(IEnumerable<T> items) { 
+      var res = new Seq<T>(composed.AddRange(items), hashCache);
+      if (res.hashCache is object) foreach (var v in items) res.hashCache.Value.Add(v); 
+      return res;
+    }
     public int BinarySearch(T item) => composed.BinarySearch(item);
     public int BinarySearch(T item, IComparer<T> comparer) => composed.BinarySearch(item, comparer);
     public int BinarySearch(int index, int count, T item, IComparer<T> comparer) => composed.BinarySearch(index, count, item, comparer);
@@ -165,7 +177,7 @@ namespace F {
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Set<T> : IEnumerable<T>, IEnumerable {
     [FIgnore] readonly ImmutableHashSet<T> composed;
-    [FIgnore] int? hashCache;
+    [FIgnore] HashCode? hashCache;
 
     Set(ImmutableHashSet<T> composed) => this.composed = composed;
     Set(Set<T> vset) => this.composed = vset.composed;
@@ -178,8 +190,11 @@ namespace F {
 
     public bool Equals(Set<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && composed.SetEquals(((Set<T>)obj).composed);
     override public int GetHashCode() {
-      if (hashCache is null) hashCache = composed.Aggregate(0, (total, next) => HashCode.Combine(total, next));
-      return (int)hashCache;
+      if (hashCache is null) {
+        hashCache = new HashCode();
+        foreach (var v in composed) hashCache.Value.Add(v);
+      }
+      return hashCache.Value.ToHashCode();
     }
 
     public Set<T> RemoveAll(Predicate<T> match) => new(this.Where(v => !match(v)));
@@ -219,7 +234,7 @@ namespace F {
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Map<TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable where TKey : notnull {
     [FIgnore] readonly ImmutableDictionary<TKey, TValue> composed;
-    [FIgnore] int? hashCache;
+    [FIgnore] HashCode? hashCache;
 
     Map(ImmutableDictionary<TKey, TValue> composed) => this.composed = composed;
     Map(Map<TKey, TValue> map) => this.composed = map.composed;
@@ -241,8 +256,11 @@ namespace F {
       return true;
     }
     override public int GetHashCode() {
-      if (hashCache is null) hashCache = composed.Aggregate(0, (total, next) => HashCode.Combine(total, next));
-      return (int)hashCache;
+      if (hashCache is null) {
+        hashCache = new HashCode();
+        foreach (var v in composed) hashCache.Value.Add(v);
+      }
+      return hashCache.Value.ToHashCode();
     }
 
     public Map<TKey, TValue> Remove(Func<TKey, TValue, bool> match) {
@@ -299,9 +317,9 @@ namespace F {
   public sealed record Que<T> : IEnumerable<T>, IEnumerable
   {
     [FIgnore] readonly ImmutableQueue<T> composed;
-    [FIgnore] int? hashCache;
+    [FIgnore] HashCode? hashCache;
 
-    Que(ImmutableQueue<T> composed) => this.composed = composed;
+    Que(ImmutableQueue<T> composed, HashCode? hashCode = null) => (this.composed, this.hashCache) = (composed, hashCode);
     Que(Que<T> vqueue) => this.composed = vqueue.composed;
 
     public Que() : this(ImmutableQueue<T>.Empty) { }
@@ -312,8 +330,11 @@ namespace F {
 
     public bool Equals(Que<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && composed.SequenceEqual(((Que<T>)obj).composed);
     override public int GetHashCode() {
-      if (hashCache is null) hashCache = composed.Aggregate(0, (total, next) => HashCode.Combine(total, next));
-      return (int)hashCache;
+      if (hashCache is null) {
+        hashCache = new HashCode();
+        foreach (var v in composed) hashCache.Value.Add(v);
+      }
+      return hashCache.Value.ToHashCode();
     }
 
     public static Que<T> operator +(Que<T> o, T v) => o.Enqueue(v);
@@ -334,7 +355,11 @@ namespace F {
     public int Count { get { return composed.Count(); } } // todo cache
 
     public (Que<T>, T v) Dequeue() { var newq = composed.Dequeue(out T v); return (new(newq), v); }
-    public Que<T> Enqueue(T v) => new(composed.Enqueue(v));
+    public Que<T> Enqueue(T v) {
+      var res = new Que<T>(composed.Enqueue(v), hashCache);
+      if (res.hashCache is object) res.hashCache.Value.Add(v);
+      return res;
+    }
     public Que<T> Enqueue(IEnumerable<T> v) => v.Aggregate(new Que<T>(), (total, next) => total.Enqueue(next));
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => (composed as IEnumerable<T>).GetEnumerator();
@@ -344,9 +369,9 @@ namespace F {
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Arr<T> : IEnumerable<T>, IEnumerable {
     [FIgnore] readonly ImmutableArray<T> composed;
-    [FIgnore] int? hashCache;
+    [FIgnore] HashCode? hashCache;
 
-    Arr(ImmutableArray<T> composed) => this.composed = composed;
+    Arr(ImmutableArray<T> composed, HashCode? hashCode = null) => (this.composed, this.hashCache) = (composed, hashCode);
     Arr(Arr<T> varr) => this.composed = varr.composed;
 
     public Arr() : this(ImmutableArray<T>.Empty) { }
@@ -357,8 +382,11 @@ namespace F {
 
     public bool Equals(Arr<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && composed.SequenceEqual(((Arr<T>)obj).composed);
     override public int GetHashCode() {
-      if (hashCache is null) hashCache = composed.Aggregate(0, (total, next) => HashCode.Combine(total, next));
-      return (int)hashCache;
+      if (hashCache is null) {
+        hashCache = new HashCode();
+        foreach (var v in composed) hashCache.Value.Add(v);
+      }
+      return hashCache.Value.ToHashCode();
     }
 
     public static Arr<T> operator +(Arr<T> o, T v) => o.Add(v);
@@ -421,8 +449,16 @@ namespace F {
     public int Length { get { return composed.Length; } }
     public bool IsDefaultOrEmpty { get { return composed.IsDefaultOrEmpty; } }
     public bool IsDefault { get { return composed.IsDefault; } }
-    public Arr<T> Add(T value) => new(composed.Add(value));
-    public Arr<T> AddRange(IEnumerable<T> items) => new(composed.AddRange(items));
+    public Arr<T> Add(T value) {
+      var res = new Arr<T>(composed.Add(value), hashCache);
+      if (res.hashCache is object) res.hashCache.Value.Add(value);
+      return res;
+    }
+    public Arr<T> AddRange(IEnumerable<T> items) {
+      var res = new Arr<T>(composed.AddRange(items), hashCache);
+      if (res.hashCache is object) foreach (var v in items) res.hashCache.Value.Add(v);
+      return res;
+    }
     public Arr<T> AddRange(Arr<T> items) => new(composed.AddRange(items.composed));
     public Arr<TOther> As<TOther>() where TOther : class => new(composed.As<TOther>());
     public ReadOnlyMemory<T> AsMemory() => composed.AsMemory();
