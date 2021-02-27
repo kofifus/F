@@ -14,7 +14,6 @@ namespace F {
     override public void PostAction(in T preVal, in T postVal) => Monitor.Exit(theLock);
     
     public LockedState(T value) : base(value) {  }
-    public static implicit operator T(LockedState<T> v) => v.Val;
   }
 
   public class LockedState<T1, T2> : State<T1>.Combine<T2> {
