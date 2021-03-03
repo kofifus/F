@@ -1,5 +1,5 @@
 # F
-C# support for decoupling Data, state and Logic
+C# support for decoupling Data, State and Logic
 <br><br>
 ## Documetaion
 
