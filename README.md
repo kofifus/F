@@ -7,7 +7,7 @@ Please see the [wiki](https://github.com/kofifus/F/wiki)
 <br><br>
 ## Installation
 
-Add the `.cs` file to your project
+Add the `.cs` files to your project
 
 In your sources add `using F;`
 <br><br>
