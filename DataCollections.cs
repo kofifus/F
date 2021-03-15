@@ -38,11 +38,11 @@ namespace F {
       return hashCache.Value.ToHashCode();
     }
 
-    public static Seq<T> operator +(Seq<T> o, T v) => o.Add(v);
-    public static Seq<T> operator +(Seq<T> o, IEnumerable<T> items) => o.Add(items);
-    public static Seq<T> operator -(Seq<T> o, T v) => o.Remove(v);
-    public static Seq<T> operator -(Seq<T> o, IEnumerable<T> items) => o.RemoveRange(items);
-    public static Seq<T> operator -(Seq<T> o, Predicate<T> match) => o.RemoveAll(match);
+    static public Seq<T> operator +(Seq<T> o, T v) => o.Add(v);
+    static public Seq<T> operator +(Seq<T> o, IEnumerable<T> items) => o.Add(items);
+    static public Seq<T> operator -(Seq<T> o, T v) => o.Remove(v);
+    static public Seq<T> operator -(Seq<T> o, IEnumerable<T> items) => o.RemoveRange(items);
+    static public Seq<T> operator -(Seq<T> o, Predicate<T> match) => o.RemoveAll(match);
 
     // use this if T is a non-nullable reference type
     public T? this[int index] { get { 
@@ -199,11 +199,11 @@ namespace F {
 
     public Set<T> RemoveAll(Predicate<T> match) => new(this.Where(v => !match(v)));
 
-    public static Set<T> operator +(Set<T> o, T v) => o.Add(v);
-    public static Set<T> operator +(Set<T> o, IEnumerable<T> other) => o.Union(other);
-    public static Set<T> operator -(Set<T> o, T v) => o.Remove(v);
-    public static Set<T> operator -(Set<T> o, IEnumerable<T> other) => o.Except(other);
-    public static Set<T> operator -(Set<T> o, Predicate<T> match) => o.RemoveAll(match);
+    static public Set<T> operator +(Set<T> o, T v) => o.Add(v);
+    static public Set<T> operator +(Set<T> o, IEnumerable<T> other) => o.Union(other);
+    static public Set<T> operator -(Set<T> o, T v) => o.Remove(v);
+    static public Set<T> operator -(Set<T> o, IEnumerable<T> other) => o.Except(other);
+    static public Set<T> operator -(Set<T> o, Predicate<T> match) => o.RemoveAll(match);
 
     // the rest of the methods just proxy to composed
 
@@ -269,11 +269,11 @@ namespace F {
       return new Map<TKey, TValue>(this.Where(kv => !pred(kv)));
     }
 
-    public static Map<TKey, TValue> operator +(Map<TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
-    public static Map<TKey, TValue> operator +(Map<TKey, TValue> o, IEnumerable<ValueTuple<TKey, TValue>> pairs) => o.SetItems(pairs.Select(vt => KeyValuePair.Create(vt.Item1, vt.Item2)));
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, TKey key) => o.Remove(key);
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, IEnumerable<TKey> keys) => new(o.composed.RemoveRange(keys));
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
+    static public Map<TKey, TValue> operator +(Map<TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
+    static public Map<TKey, TValue> operator +(Map<TKey, TValue> o, IEnumerable<ValueTuple<TKey, TValue>> pairs) => o.SetItems(pairs.Select(vt => KeyValuePair.Create(vt.Item1, vt.Item2)));
+    static public Map<TKey, TValue> operator -(Map<TKey, TValue> o, TKey key) => o.Remove(key);
+    static public Map<TKey, TValue> operator -(Map<TKey, TValue> o, IEnumerable<TKey> keys) => new(o.composed.RemoveRange(keys));
+    static public Map<TKey, TValue> operator -(Map<TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
 
     // use this if T is a non-nullable reference type
     public TValue? this[TKey key] => composed.TryGetValue(key, out var value) ? value : default;
@@ -337,7 +337,7 @@ namespace F {
       return hashCache.Value.ToHashCode();
     }
 
-    public static Que<T> operator +(Que<T> o, T v) => o.Enqueue(v);
+    static public Que<T> operator +(Que<T> o, T v) => o.Enqueue(v);
 
     public T? Peek() {
       if (IsEmpty) return default;
@@ -389,11 +389,11 @@ namespace F {
       return hashCache.Value.ToHashCode();
     }
 
-    public static Arr<T> operator +(Arr<T> o, T v) => o.Add(v);
-    public static Arr<T> operator +(Arr<T> o, IEnumerable<T> items) => o.AddRange(items);
-    public static Arr<T> operator -(Arr<T> o, T v) => o.Remove(v);
-    public static Arr<T> operator -(Arr<T> o, IEnumerable<T> items) => o.RemoveRange(items);
-    public static Arr<T> operator -(Arr<T> o, Predicate<T> match) => o.RemoveAll(match);
+    static public Arr<T> operator +(Arr<T> o, T v) => o.Add(v);
+    static public Arr<T> operator +(Arr<T> o, IEnumerable<T> items) => o.AddRange(items);
+    static public Arr<T> operator -(Arr<T> o, T v) => o.Remove(v);
+    static public Arr<T> operator -(Arr<T> o, IEnumerable<T> items) => o.RemoveRange(items);
+    static public Arr<T> operator -(Arr<T> o, Predicate<T> match) => o.RemoveAll(match);
 
     public T? this[int index] { get {
         if (index < 0 || index >= Count) return default;
@@ -469,8 +469,8 @@ namespace F {
     public int BinarySearch(int index, int length, T value, IComparer<T> comparer) => composed.BinarySearch(index, length, value, comparer);
     public Arr<TOther> CastArray<TOther>() where TOther : class => new(composed.CastArray<TOther>());
     public bool Contains(T value) => composed.Contains(value);
-    public static Arr<T> CreateRange(IEnumerable<T> items) => new(ImmutableArray.CreateRange(items));
-    public static Arr<TResult> CreateRange<TResult>(ImmutableArray<T> items, Func<T, TResult> selector) => new(ImmutableArray.CreateRange(items, selector));
+    static public Arr<T> CreateRange(IEnumerable<T> items) => new(ImmutableArray.CreateRange(items));
+    static public Arr<TResult> CreateRange<TResult>(ImmutableArray<T> items, Func<T, TResult> selector) => new(ImmutableArray.CreateRange(items, selector));
     public void CopyTo(int index, T[] array, int arrayIndex, int count) => composed.CopyTo(index, array, arrayIndex, count);
     public void CopyTo(T[] array) => composed.CopyTo(array);
     public void CopyTo(T[] array, int arrayIndex) => composed.CopyTo(array, arrayIndex);
@@ -505,7 +505,7 @@ namespace F {
   }
 
 /*
-  public static class CollectionsExtensionsMethods {
+  static public class CollectionsExtensionsMethods {
     static public (bool, Arr<T>) With<T, TVal>(this Arr<T> o, int index, Expression<Func<T, TVal>> expression, TVal withVal) where T : FRecord<T> {
       var (ok, value) = o[index];
       return ok ? o.SetItem(index, value.With(expression, withVal)) : default; 

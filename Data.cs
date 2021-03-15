@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 
 namespace F {
 
-  public static class Data {
+  static public class Data {
 
     // FRecordEqualsIgnore attribute excludes the field/property from Equals 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false)]
@@ -20,7 +20,7 @@ namespace F {
 
     static ImmutableDictionary<Type, bool> Verified = ImmutableDictionary<Type, bool>.Empty;
 
-    public static void AssertF() {
+    static public void AssertF() {
 #if DEBUG
       foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) Fcheck(t, true, "", true);
 #endif
@@ -183,7 +183,7 @@ namespace F {
       return (true, backingField);
     }
 
-    public static bool ImplementsOrDerives(this Type @this, Type from) {
+    static public bool ImplementsOrDerives(this Type @this, Type from) {
       if (from is null) return false;
       if (!from.IsGenericType)  return from.IsAssignableFrom(@this);
       if (!from.IsGenericTypeDefinition) return from.IsAssignableFrom(@this);
