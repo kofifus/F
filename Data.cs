@@ -43,7 +43,7 @@ namespace F {
       }
 
       // check for State
-      if (ns == "F" && (t.ImplementsOrDerives(typeof(State<>)) || t.ImplementsOrDerives(typeof(State<>.Combine<>)))) return true;
+      if (ns == "F" && (t.ImplementsOrDerives(typeof(IStateVal<>)) || t.ImplementsOrDerives(typeof(IStateRef<>)) || t.ImplementsOrDerives(typeof(State<>.Combine<>)))) return true;
 
       var members = GetMembers(t, false);
 

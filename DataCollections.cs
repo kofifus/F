@@ -16,7 +16,7 @@ using static F.Data;
 namespace F {
 
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Seq<T> : IEnumerable<T>, IEnumerable where T : notnull {
+  public sealed record Seq<T> : IEnumerable<T>, IEnumerable {
     [FIgnore] readonly ImmutableList<T> composed;
     [FIgnore] HashCode? hashCache;
 
@@ -158,6 +158,7 @@ namespace F {
       try { return new(composed.SetItem(index, value)); } catch { return null; } 
     }
     
+    public Seq<T> Sort() => new(composed.Sort());
     public Seq<T> Sort(IComparer<T> comparer) => new(composed.Sort(comparer));
     public Seq<T> Sort(Comparison<T> comparison) => new(composed.Sort(comparison));
     
@@ -165,7 +166,7 @@ namespace F {
       if (index < 0 || index >= Count) return default;
       try { return new(composed.Sort(index, count, comparer)); } catch { return null; } 
     }
-    public Seq<T> Sort() => new(composed.Sort());
+
     public ImmutableList<T>.Builder ToBuilder() => composed.ToBuilder();
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => (composed as IEnumerable<T>).GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => (composed as IEnumerable).GetEnumerator();
