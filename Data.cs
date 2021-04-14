@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 
 namespace F {
 
-  static public class Data {
+  public static class Data {
 
     // FRecordEqualsIgnore attribute excludes the field/property from Equals 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false)]
@@ -20,7 +20,7 @@ namespace F {
 
     static ImmutableDictionary<Type, bool> Verified = ImmutableDictionary<Type, bool>.Empty;
 
-    static public void AssertF() {
+    public static void AssertF() {
 #if DEBUG
       foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) Fcheck(t, true, "", true);
 #endif
@@ -37,10 +37,11 @@ namespace F {
 
       if (FIgnore && t.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) return true;
 
-      foreach (var gat in t.GetGenericArguments()) {
-        if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
-        if (!Fcheck(gat, false, $"({t.Name} generic argument) ", assert)) return false;
-      }
+      // check that all generic arguments are Data ???
+      //foreach (var gat in t.GetGenericArguments()) {
+      //  if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
+      //  if (!Fcheck(gat, false, $"({t.Name} generic argument) ", assert)) return false;
+      //}
 
       // check for State
       if (ns == "F" && (t.ImplementsOrDerives(typeof(IStateVal<>)) || t.ImplementsOrDerives(typeof(IStateRef<>)) || t.ImplementsOrDerives(typeof(State<>.Combine<>)))) return true;
@@ -183,7 +184,7 @@ namespace F {
       return (true, backingField);
     }
 
-    static public bool ImplementsOrDerives(this Type @this, Type from) {
+    public static bool ImplementsOrDerives(this Type @this, Type from) {
       if (from is null) return false;
       if (!from.IsGenericType)  return from.IsAssignableFrom(@this);
       if (!from.IsGenericTypeDefinition) return from.IsAssignableFrom(@this);
