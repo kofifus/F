@@ -22,7 +22,7 @@ namespace F {
 
   public class JournalingState<T> : State<T> {
     readonly object theLock = new();
-    public Seq<T> Journal = new();
+    public Lst<T> Journal = new();
 
     override protected object? PreAction(in T preVal) { 
       var wasEntered = Monitor.IsEntered(theLock); 

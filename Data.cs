@@ -20,14 +20,18 @@ namespace F {
 
     static ImmutableDictionary<Type, bool> Verified = ImmutableDictionary<Type, bool>.Empty;
 
-    public static void AssertF() {
+    public static void AssertF(Func<Type, bool>? IgnoreFunc=null, Func<Type, bool>? ApproveFunc=null) {
 #if DEBUG
-      foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) Fcheck(t, true, "", true);
+      foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) {
+        if (IgnoreFunc is object && IgnoreFunc(t)) continue;
+        Fcheck(t, true, "", true, ApproveFunc);
+      }
 #endif
     }
 
-    static bool FcheckInternal(Type t, bool FIgnore, string prefix, bool assert) {
+    static bool FcheckInternal(Type t, bool FIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
       if (IsWhitelisted(t)) return true;
+      if (ApproveFunc is object && ApproveFunc(t)) return true;
 
       string fullName = (t.FullName ?? ""), baseFullName = (t.BaseType?.FullName ?? ""), ns = (t.Namespace ?? ""), name = (t.Name ?? ""), baseName = (t.BaseType?.Name ?? "");
       var isAnonymous = name.Contains("AnonymousType");
@@ -36,7 +40,7 @@ namespace F {
       if (t.IsInterface || isAnonymous || isAttribute || isCompilerGenerated) return true;
 
       if (FIgnore && t.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) return true;
-
+      
       // check that all generic arguments are Data ???
       //foreach (var gat in t.GetGenericArguments()) {
       //  if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
@@ -95,15 +99,15 @@ namespace F {
           return false;
         }
 
-        if (!Fcheck(memberType, false, $"({t.Name} member) ", assert)) return false;
+        if (!Fcheck(memberType, false, $"({t.Name} member) ", assert, ApproveFunc)) return false;
       }
       return true;
     }
 
-    static bool Fcheck(Type t, bool FIgnore, string prefix, bool assert) {
+    static bool Fcheck(Type t, bool FIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
       if (!Verified.TryGetValue(t, out var isData)) {
         Debug.WriteLine($"FcheckInternal({t.Name}, {FIgnore}, {prefix}, {assert})");
-        isData = FcheckInternal(t, FIgnore, prefix, assert);
+        isData = FcheckInternal(t, FIgnore, prefix, assert, ApproveFunc);
         Verified = Verified.Add(t, isData); // cache it
       }
       return isData;
