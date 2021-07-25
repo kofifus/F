@@ -60,18 +60,18 @@ namespace F {
       // class must implement IEquatable<T> - value semantics
       var isStruct = t.IsValueType && !t.IsEnum;
       if (!isStruct && !t.GetInterfaces().Any(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IEquatable<>))) {
-        if (assert) throw new Exception($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} not inherting IEquatable<T>");
+        if (assert) throw new($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} not inherting IEquatable<T>");
         return false;
       }
 
       // type must implement == and !=
       var operators = t.GetMethods().Where(methodInfo => methodInfo.IsSpecialName).Select(methodInfo => methodInfo.Name);
       if (!operators.Contains("op_Equality")) {
-        if (assert) throw new Exception($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} does not implement operator==");
+        if (assert) throw new($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} does not implement operator==");
         return false;
       }
       if (!operators.Contains("op_Inequality")) {
-        if (assert) throw new Exception($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} does not implement operator!=");
+        if (assert) throw new($"{prefix}{(t.FullName is object ? t.FullName : t.Name)} does not implement operator!=");
         return false;
       }
 
@@ -85,7 +85,7 @@ namespace F {
           };
 
           if (isPublic) {
-            if (assert) throw new Exception($"[FIgnore] on public ({t.Name} member) {memberInfo.Name}");
+            if (assert) throw new($"[FIgnore] on public ({t.Name} member) {memberInfo.Name}");
             return false;
           }
 
@@ -95,7 +95,7 @@ namespace F {
         if (memberInfo.Name == "EqualityContract") continue;
 
         if (!IsReadonlyAfterInit(memberInfo)) {
-          if (assert) throw new Exception($"({t.Name} member) {memberInfo.Name} is not read only");
+          if (assert) throw new($"({t.Name} member) {memberInfo.Name} is not read only");
           return false;
         }
 

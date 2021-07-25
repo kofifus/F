@@ -14,6 +14,7 @@ using static F.Data;
 #nullable enable
 
 namespace F {
+
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Lst<T> : IEnumerable<T>, IEnumerable {
     [FIgnore] readonly ImmutableList<T> Composed;
@@ -22,16 +23,17 @@ namespace F {
     Lst(ImmutableList<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
 
     public Lst() : this(ImmutableList<T>.Empty) { }
-    public Lst(params T[] p) : this(new Lst<T>().AddRange(p)) { }
+    public Lst(params T?[] p) : this(new Lst<T>().AddRange(p.Where(x => x is object)!)) { }
     public Lst(params IEnumerable<T>?[] p) : this(new Lst<T>().AddRange(p)) { }
 
     public override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Lst<T>? obj) => obj is object && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
+    public bool Equals(Lst<T>? obj) => obj is object && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
+
     override public int GetHashCode() {
       if (HashCache is null) {
-        HashCache = new HashCode();
+        HashCache = new();
         foreach (var v in Composed) HashCache.Value.Add(v);
       }
       return HashCache.Value.ToHashCode();
@@ -81,9 +83,6 @@ namespace F {
       return index > -1;
     }
 
-
-    // the rest of the methods just proxy to Composed
-
     public bool IsEmpty { get { return Composed.IsEmpty; } }
     public bool NotEmpty { get { return !IsEmpty; } }
 
@@ -112,7 +111,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new Lst<T>(composed, hash);
+      return new(composed, hash);
     }
 
     public int BinarySearch(T item) => Composed.BinarySearch(item);
@@ -206,16 +205,17 @@ namespace F {
     Set(ImmutableHashSet<T> composed) => (Composed, HashCache) = (composed, null);
 
     public Set() : this(ImmutableHashSet<T>.Empty) { }
-    public Set(params T[] p) : this(new Set<T>().Union(p)) { }
+    public Set(params T?[] p) : this(new Set<T>().Union(p)) { }
     public Set(params IEnumerable<T>?[] p) : this(new Set<T>().Union(p)) { }
 
     public override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Set<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(((Set<T>)obj).Composed);
+    public bool Equals(Set<T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(((Set<T>)obj).Composed);
+
     override public int GetHashCode() {
       if (HashCache is null) {
-        HashCache = new HashCode();
+        HashCache = new();
         foreach (var v in Composed) HashCache.Value.Add(v);
       }
       return HashCache.Value.ToHashCode();
@@ -254,7 +254,7 @@ namespace F {
     public Set<T> Remove(T item) => new(Composed.Remove(item));
     public bool SetEquals(IEnumerable<T> other) => Composed.SetEquals(other);
     public Set<T> SymmetricExcept(IEnumerable<T> other) => new(Composed.SymmetricExcept(other));
-    public Set<T> Union(IEnumerable<T> other) => new(Composed.Union(other));
+    public Set<T> Union(IEnumerable<T?> other) => new(Composed.Union(other.Where(t => t is object)!));
     public ImmutableHashSet<T>.Builder ToBuilder() => Composed.ToBuilder();
     public IEnumerator<T> GetEnumerator() => Composed.GetEnumerator();
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
@@ -279,8 +279,7 @@ namespace F {
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
 
     public bool Equals(Map<TKey, TValue>? obj) {
-      if (obj is null || GetHashCode() != obj.GetHashCode()) return false;
-      if (Count != obj.Count) return false;
+      if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
       foreach (var (d1key, d1value) in Composed) {
         if (!obj.Composed.TryGetValue(d1key, out TValue? d2value)) return false;
         if (!object.Equals(d1value, d2value)) return false;
@@ -289,7 +288,7 @@ namespace F {
     }
     override public int GetHashCode() {
       if (HashCache is null) {
-        HashCache = new HashCode();
+        HashCache = new();
         foreach (var v in Composed) HashCache.Value.Add(v);
       }
       return HashCache.Value.ToHashCode();
@@ -298,7 +297,7 @@ namespace F {
     public Map<TKey, TValue> Remove(Func<TKey, TValue, bool> match) {
       bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
       if (match is null) throw new ArgumentNullException(nameof(match));
-      return new Map<TKey, TValue>(this.Where(kv => !pred(kv)));
+      return new(this.Where(kv => !pred(kv)));
     }
 
     public static Map<TKey, TValue> operator +(Map<TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
@@ -327,7 +326,6 @@ namespace F {
       foreach (var item in items) if (item is object) foreach (var kvp in item) res = res.SetItem(kvp.Key, kvp.Value);
       return new(res);
     }
-
 
     // the rest of the methods just proxy to Composed
 
@@ -366,6 +364,7 @@ namespace F {
     public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
   }
 
+
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Que<T> : IEnumerable<T>, IEnumerable {
     [FIgnore] readonly ImmutableQueue<T> Composed;
@@ -374,7 +373,7 @@ namespace F {
     Que(ImmutableQueue<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
 
     public Que() : this(ImmutableQueue<T>.Empty) { }
-    public Que(params T[] p) : this(new Que<T>().Enqueue(p)) { }
+    public Que(params T?[] p) : this(new Que<T>().Enqueue(p)) { }
     public Que(params IEnumerable<T>?[] p) : this(new Que<T>().Enqueue(p)) { }
 
     public override string ToString() => ToString(',');
@@ -383,7 +382,7 @@ namespace F {
     public bool Equals(Que<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Que<T>)obj).Composed);
     override public int GetHashCode() {
       if (HashCache is null) {
-        HashCache = new HashCode();
+        HashCache = new();
         foreach (var v in Composed) HashCache.Value.Add(v);
       }
       return HashCache.Value.ToHashCode();
@@ -412,7 +411,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new Que<T>(composed, hash);
+      return new(composed, hash);
     }
 
     // the rest of the methods just proxy to Composed
@@ -427,11 +426,12 @@ namespace F {
       if (res.HashCache is object) res.HashCache.Value.Add(v);
       return res;
     }
-    public Que<T> Enqueue(IEnumerable<T> v) => v.Aggregate(new Que<T>(), (total, next) => total.Enqueue(next));
+    public Que<T> Enqueue(IEnumerable<T?> v) => v.Aggregate(new Que<T>(), (total, next) => next is object ? total.Enqueue(next) : total);
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
   }
+
 
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public sealed record Arr<T> : IEnumerable<T>, IEnumerable {
@@ -441,7 +441,7 @@ namespace F {
     Arr(ImmutableArray<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
 
     public Arr() : this(ImmutableArray<T>.Empty) { }
-    public Arr(params T[] p) : this(new Arr<T>().AddRange(p)) { }
+    public Arr(params T?[] p) : this(new Arr<T>().AddRange(p.Where(x => x is object)!)) { }
     public Arr(params IEnumerable<T>?[] p) : this(new Arr<T>().AddRange(p)) { }
 
     public override string ToString() => ToString(',');
@@ -450,7 +450,7 @@ namespace F {
     public bool Equals(Arr<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Arr<T>)obj).Composed);
     override public int GetHashCode() {
       if (HashCache is null) {
-        HashCache = new HashCode();
+        HashCache = new();
         foreach (var v in Composed) HashCache.Value.Add(v);
       }
       return HashCache.Value.ToHashCode();
@@ -520,7 +520,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new Arr<T>(composed, hash);
+      return new(composed, hash);
     }
 
     // the rest of the methods just proxy to Composed
@@ -538,7 +538,7 @@ namespace F {
     }
     public Arr<T> AddRange(IEnumerable<T>? items) {
       if (items is null) return this;
-      var res = new Arr<T>(Composed.AddRange(items), HashCache);
+      var res = new Arr<T>(Composed.AddRange(items.Where(x => x is object)!), HashCache);
       if (res.HashCache is object) foreach (var v in items) res.HashCache.Value.Add(v);
       return res;
     }
@@ -625,47 +625,12 @@ namespace F {
 
 namespace System.Linq {
   public static class CollectionsExtensionsMethods {
-
-    public static Lst<TSource> ToLst<TSource>(this IEnumerable<TSource> source) => new(source);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource) source) => new(source.Item1, source.Item2);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6);
-    public static Lst<TSource> ToLst<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6, source.Item7);
-
-    public static Set<TSource> ToSet<TSource>(this IEnumerable<TSource> source) => new(source);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource) source) => new(source.Item1, source.Item2);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6);
-    public static Set<TSource> ToSet<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6, source.Item7);
-
+    public static Lst<T> ToLst<T>(this IEnumerable<T> source) => new(source);
+    public static Set<T> ToSet<T>(this IEnumerable<T> source) => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<(TKey key, TValue val)> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) where TKey : notnull => new(source);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2, source.Item3);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2, source.Item3, source.Item4);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6);
-    public static Map<TKey, TValue> ToMap<TKey, TValue>(this ((TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val), (TKey key, TValue val)) source) where TKey : notnull => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6, source.Item7);
-
-    public static Que<TSource> ToQue<TSource>(this IEnumerable<TSource> source) => new(source);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource) source) => new(source.Item1, source.Item2);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6);
-    public static Que<TSource> ToQue<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6, source.Item7);
-
-    public static Arr<TSource> ToArr<TSource>(this IEnumerable<TSource> source) => new(source);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource) source) => new(source.Item1, source.Item2);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6);
-    public static Arr<TSource> ToArr<TSource>(this (TSource, TSource, TSource, TSource, TSource, TSource, TSource) source) => new(source.Item1, source.Item2, source.Item3, source.Item4, source.Item5, source.Item6, source.Item7);
+    public static Que<T> ToQue<T>(this IEnumerable<T> source) => new(source);
+    public static Arr<T> ToArr<T>(this IEnumerable<T> source) => new(source);
   }
 }
 
