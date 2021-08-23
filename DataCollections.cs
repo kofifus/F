@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Reflection;
 using F;
 using Newtonsoft.Json;
@@ -27,7 +24,10 @@ namespace F {
     public Lst(params IEnumerable<T>?[] p) : this(new Lst<T>().AddRange(p)) { }
 
     public override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    public string ToString(char separator) {
+      var index = 0;
+      return Composed.Aggregate("", (total, next) => $"{total}{(index++ == 0 ? "" : separator)}{next?.ToString() ?? ""}");
+    }
 
     public bool Equals(Lst<T>? obj) => obj is object && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
 
@@ -379,7 +379,7 @@ namespace F {
     public override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Que<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Que<T>)obj).Composed);
+    public bool Equals(Que<T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Que<T>)obj).Composed);
     override public int GetHashCode() {
       if (HashCache is null) {
         HashCache = new();
@@ -420,7 +420,7 @@ namespace F {
 
     public int Count { get { return Composed.Count(); } } // todo cache
 
-    public (Que<T>, T v) Dequeue() { var newq = Composed.Dequeue(out T v); return (new(newq), v); }
+    public (Que<T> Que, T Value) Dequeue() { var newq = Composed.Dequeue(out T v); return (new(newq), v); }
     public Que<T> Enqueue(T v) {
       var res = new Que<T>(Composed.Enqueue(v), HashCache);
       if (res.HashCache is object) res.HashCache.Value.Add(v);
@@ -447,7 +447,7 @@ namespace F {
     public override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Arr<T>? obj) => obj is not null && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Arr<T>)obj).Composed);
+    public bool Equals(Arr<T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Arr<T>)obj).Composed);
     override public int GetHashCode() {
       if (HashCache is null) {
         HashCache = new();

@@ -1,5 +1,4 @@
-﻿using System;
-
+﻿
 // https://github.com/kofifus/F/wiki
 
 #nullable enable
