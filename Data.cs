@@ -30,6 +30,14 @@ namespace F {
 #endif
     }
 
+    static bool Fcheck(Type t, bool checkFIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
+      if (!Verified.TryGetValue(t, out var isData)) {
+        isData = FcheckInternal(t, checkFIgnore, prefix, assert, ApproveFunc);
+        Verified = Verified.Add(t, isData); // cache it
+      }
+      return isData;
+    }
+
     static bool FcheckInternal(Type t, bool checkFIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
       if (IsWhitelisted(t)) return true;
       if (ApproveFunc is object && ApproveFunc(t)) return true;
@@ -37,11 +45,14 @@ namespace F {
       string fullName = (t.FullName ?? ""), baseFullName = (t.BaseType?.FullName ?? ""), ns = (t.Namespace ?? ""), name = (t.Name ?? ""), baseName = (t.BaseType?.Name ?? "");
       var isAnonymous = name.Contains("AnonymousType");
       var isAttribute = t.BaseType == typeof(Attribute);
-      var isCompilerGenerated = fullName.Contains("_DisplayClass") || fullName.Contains('+');
+      var isCompilerGenerated = Attribute.GetCustomAttribute(t, typeof(CompilerGeneratedAttribute)) is object;
+      if (fullName.Contains("__")) isCompilerGenerated = true;
       if (t.IsInterface || isAnonymous || isAttribute || isCompilerGenerated) return true;
 
       if (checkFIgnore && t.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) return true;
-      
+
+      Debug.WriteLine($"Fcheck({t.Name}, {checkFIgnore}, {prefix}, {assert})");
+
       // check that all generic arguments are Data ???
       //foreach (var gat in t.GetGenericArguments()) {
       //  if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
@@ -93,10 +104,10 @@ namespace F {
             _ => false
           };
 
-          if (isPublic) {
+          /*if (isPublic) {
             if (assert) throw new($"[FIgnore] on public ({t.Name} member) {memberInfo.Name}");
             return false;
-          }
+          }*/
 
           continue;
         }
@@ -119,23 +130,17 @@ namespace F {
       return true;
     }
 
-    static bool Fcheck(Type t, bool FIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
-      if (!Verified.TryGetValue(t, out var isData)) {
-        Debug.WriteLine($"FcheckInternal({t.Name}, {FIgnore}, {prefix}, {assert})");
-        isData = FcheckInternal(t, FIgnore, prefix, assert, ApproveFunc);
-        Verified = Verified.Add(t, isData); // cache it
-      }
-      return isData;
-    }
-
-    static bool IsWhitelisted(Type t) {
+    static bool IsWhitelisted(Type t_) {
       var basic = new Type[] {
       typeof(byte), typeof(sbyte), typeof(short), typeof(int), typeof(long), typeof(ushort), typeof(uint), typeof(ulong),
-      typeof(char), typeof(float), typeof(double), typeof(decimal), typeof(bool), typeof(string), typeof(DBNull), typeof(Uri), typeof(void), typeof(Guid),
+      typeof(char), typeof(float), typeof(double), typeof(decimal), typeof(bool), typeof(string), typeof(DBNull), typeof(Uri), 
+      typeof(void), typeof(Guid), typeof(DateTime),
       typeof(byte?), typeof(sbyte?), typeof(short?), typeof(int?), typeof(long?), typeof(ushort?), typeof(uint?), typeof(ulong?),
       typeof(char?), typeof(float?), typeof(double?), typeof(decimal?), typeof(bool?), typeof(DateTime?),
       typeof(HttpContent)
       };
+
+      var t = Nullable.GetUnderlyingType(t_) ?? t_;
       if (basic.Contains(t)) return true;
 
       if (typeof(ITuple).IsAssignableFrom(t)) return true; //Tuple

@@ -629,6 +629,7 @@ namespace System.Linq {
     public static Set<T> ToSet<T>(this IEnumerable<T> source) => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<(TKey key, TValue val)> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) where TKey : notnull => new(source);
+    public static Map<TKey, TValue> ToMap<TKey, TValue, TSource>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TValue> valueSelector) where TKey : notnull => new(source.ToImmutableDictionary(keySelector, valueSelector));
     public static Que<T> ToQue<T>(this IEnumerable<T> source) => new(source);
     public static Arr<T> ToArr<T>(this IEnumerable<T> source) => new(source);
   }
