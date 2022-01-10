@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
@@ -41,6 +42,7 @@ namespace F {
     static bool FcheckInternal(Type t, bool checkFIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
       if (IsWhitelisted(t)) return true;
       if (ApproveFunc is object && ApproveFunc(t)) return true;
+      if (t.IsEnum) return true;
 
       string fullName = (t.FullName ?? ""), baseFullName = (t.BaseType?.FullName ?? ""), ns = (t.Namespace ?? ""), name = (t.Name ?? ""), baseName = (t.BaseType?.Name ?? "");
       var isAnonymous = name.Contains("AnonymousType");
@@ -51,16 +53,34 @@ namespace F {
 
       if (checkFIgnore && t.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) return true;
 
-      Debug.WriteLine($"Fcheck({t.Name}, {checkFIgnore}, {prefix}, {assert})");
+      //Debug.WriteLine($"Fcheck({t.Name}, {checkFIgnore}, {prefix}, {assert})");
 
-      // check that all generic arguments are Data ???
-      //foreach (var gat in t.GetGenericArguments()) {
-      //  if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
-      //  if (!Fcheck(gat, false, $"({t.Name} generic argument) ", assert)) return false;
-      //}
+      /* // check that all generic arguments are Data ???
+      var genericArgs = t.GetGenericArguments().ToList();
+      if (t.BaseType is object) genericArgs.AddRange(t.BaseType.GetGenericArguments());
+      foreach (var gat in genericArgs) {
+        if (gat == t) continue;
+        if (gat.FullName is null) continue;
+        if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
+        if (!Fcheck(gat, false, $"{t.Name} generic argument ", assert, ApproveFunc)) return false;
+      } */
 
       // check for State
       if (ns == "F" && (t.ImplementsOrDerives(typeof(IStateVal<>)) || t.ImplementsOrDerives(typeof(IStateRef<>)) || t.ImplementsOrDerives(typeof(State<>.Combine<>)))) return true;
+
+      // special treatment for SetBase, composed must pass Fcheck
+      if (ImplementsOrDerives(t, typeof(SetBase<,>))) {
+        var args = t.BaseType?.GetGenericArguments()!;
+        if (args.Length != 2 || args[1].FullName is null) return true;
+        return Fcheck(args[1], false, $"{t.Name} generic argument ", assert, ApproveFunc);
+      }
+
+      // special treatment for MapBase, composed must pass Fcheck
+      if (ImplementsOrDerives(t, typeof(MapBase<,,>))) {
+        var args = t.BaseType?.GetGenericArguments()!;
+        if (args.Length != 3 || args[1].FullName is null) return true;
+        return Fcheck(args[1], false, $"{t.Name} generic argument ", assert, ApproveFunc);
+      }
 
       var members = GetMembers(t, true, true, checkFIgnore ? typeof(FIgnore) : null);
 
@@ -68,6 +88,16 @@ namespace F {
       if (members.IsEmpty) return true;
 
       //if (t.IsGenericType || t.IsGenericTypeParameter) return true;
+
+      // allow modules - records that contain only private IState members
+      if (members.Any(vt => ImplementsOrDerives(vt.Item1, typeof(IStateVal<>)) || ImplementsOrDerives(vt.Item1, typeof(IStateRef<>)))) {
+        foreach (var (memberType, memberInfo) in members) {
+          if (IsMemberStatic(memberInfo)) continue; // allow static members in modules
+          if (IsMemeberPublic(memberInfo)) throw new($"module {t.Name} member {memberInfo.Name} cannot be public");
+          if (!ImplementsOrDerives(memberType, typeof(IStateVal<>)) && !ImplementsOrDerives(memberType, typeof(IStateRef<>))) throw new($"module {t.Name} member {memberInfo.Name} must be an IState");
+        }
+        return true;
+      }
 
       var isStruct = t.IsValueType && !t.IsEnum;
       var isStaticClass = t.IsClass && t.IsSealed && t.IsAbstract;
@@ -105,7 +135,7 @@ namespace F {
           };
 
           /*if (isPublic) {
-            if (assert) throw new($"[FIgnore] on public ({t.Name} member) {memberInfo.Name}");
+            if (assert) throw new($"[FIgnore] on public {t.Name}.{memberInfo.Name}");
             return false;
           }*/
 
@@ -116,16 +146,15 @@ namespace F {
         if (memberType == t) continue;
 
         if (memberInfo.Name == "EqualityContract") continue;
+        if (memberType.IsEnum) continue;
 
         // check member is read only
         if (IsWhitelisted(memberType) && !IsReadonlyAfterInit(memberInfo)) {
-          if (assert) throw new($"({t.Name} member) {memberInfo.Name} is not read only");
+          if (assert) throw new($"{t.Name}.{memberInfo.Name} is not read only");
           return false;
         }
 
-        if (memberType.IsEnum) continue;
-
-        if (!Fcheck(memberType, false, $"({t.Name} member) ", assert, ApproveFunc)) return false;
+        if (!Fcheck(memberType, false, $"{t.Name}. ", assert, ApproveFunc)) return false;
       }
       return true;
     }
@@ -225,7 +254,24 @@ namespace F {
       if (@this.IsGenericType && @this.GetGenericTypeDefinition() == from) return true;
       return @this.BaseType?.ImplementsOrDerives(from) ?? false;
     }
+
+    public static bool IsMemberStatic(MemberInfo memberInfo) {
+      return memberInfo.MemberType switch {
+        MemberTypes.Field => ((FieldInfo)memberInfo).IsStatic,
+        MemberTypes.Property => ((PropertyInfo)memberInfo).GetAccessors(true)[0].IsStatic,
+        _ => false
+      };
+    }
+
+    static bool IsMemeberPublic(MemberInfo memberInfo) {
+      return memberInfo.MemberType switch {
+        MemberTypes.Field => ((FieldInfo)memberInfo).IsPublic,
+        MemberTypes.Property => ((PropertyInfo)memberInfo).GetAccessors().Any(MethodInfo => MethodInfo.IsPublic),
+        _ => false
+      };
+    }
   }
+
 }
 
 

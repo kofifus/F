@@ -1,6 +1,9 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Reflection;
 using F;
 using Newtonsoft.Json;
@@ -13,23 +16,27 @@ using static F.Data;
 namespace F {
 
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Lst<T> : IEnumerable<T>, IEnumerable {
-    [FIgnore] readonly ImmutableList<T> Composed;
-    [FIgnore] HashCode? HashCache;
+  public abstract record LstBase<TDerived, T> : IEnumerable<T>, IEnumerable
+    where TDerived : LstBase<TDerived, T>, new() {
 
-    Lst(ImmutableList<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
+    [FIgnore] protected ImmutableList<T> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
 
-    public Lst() : this(ImmutableList<T>.Empty) { }
-    public Lst(params T?[] p) : this(new Lst<T>().AddRange(p.Where(x => x is object)!)) { }
-    public Lst(params IEnumerable<T>?[] p) : this(new Lst<T>().AddRange(p)) { }
+    public LstBase() => Composed = ImmutableList<T>.Empty;
+    public LstBase(params T?[] p) => Composed = ImmutableList<T>.Empty.AddRange(p.Where(x => x is object)!);
+    public LstBase(params IEnumerable<T>?[] ps) => Composed = ImmutableList<T>.Empty.AddRange(ps.SelectMany(x => x ?? Enumerable.Empty<T>()));
+    protected LstBase(ImmutableList<T> composed) => Composed = composed;
 
-    public override string ToString() => ToString(',');
+    protected static TDerived New(ImmutableList<T> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<T> p, HashCode? hashCode = null) => new() { Composed = p.ToImmutableList(), HashCache = hashCode };
+
+    public sealed override string ToString() => ToString(',');
     public string ToString(char separator) {
       var index = 0;
       return Composed.Aggregate("", (total, next) => $"{total}{(index++ == 0 ? "" : separator)}{next?.ToString() ?? ""}");
     }
 
-    public bool Equals(Lst<T>? obj) => obj is object && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
+    public virtual bool Equals(LstBase<TDerived, T>? obj) => obj is object && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
 
     override public int GetHashCode() {
       if (HashCache is null) {
@@ -39,17 +46,11 @@ namespace F {
       return HashCache.Value.ToHashCode();
     }
 
-    public static Lst<T> operator +(Lst<T> o, T v) => o.Add(v);
-    public static Lst<T> operator +(Lst<T> o, Lst<T> items) => o.AddRange(items);
-    public static Lst<T> operator +(Lst<T> o, Set<T> items) => o.AddRange(items);
-    public static Lst<T> operator +(Lst<T> o, Arr<T> items) => o.AddRange(items);
-    public static Lst<T> operator +(Lst<T> o, Que<T> items) => o.AddRange(items);
-    public static Lst<T> operator -(Lst<T> o, T v) => o.Remove(v);
-    public static Lst<T> operator -(Lst<T> o, Lst<T> items) => o.RemoveRange(items);
-    public static Lst<T> operator -(Lst<T> o, Set<T> items) => o.RemoveRange(items);
-    public static Lst<T> operator -(Lst<T> o, Arr<T> items) => o.RemoveRange(items);
-    public static Lst<T> operator -(Lst<T> o, Que<T> items) => o.RemoveRange(items);
-    public static Lst<T> operator -(Lst<T> o, Predicate<T> match) => o.RemoveAll(match);
+    public static TDerived operator +(LstBase<TDerived, T> o, T v) => o.Add(v);
+    public static TDerived operator +(LstBase<TDerived, T> o, IEnumerable<T> items) => o.AddRange(items);
+    public static TDerived operator -(LstBase<TDerived, T> o, T v) => o.Remove(v);
+    public static TDerived operator -(LstBase<TDerived, T> o, IEnumerable<T> items) => o.RemoveRange(items);
+    public static TDerived operator -(LstBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
 
     // use this if T is a non-nullable reference type
     public T? this[int index] { get {
@@ -88,20 +89,20 @@ namespace F {
 
     public int Count { get { return Composed.Count; } }
 
-    public Lst<T> Add(T value) {
-      var res = new Lst<T>(Composed.Add(value), HashCache);
+    public TDerived Add(T value) {
+      var res = New(Composed.Add(value), HashCache);
       if (res.HashCache is object) res.HashCache.Value.Add(value);
       return res;
     }
 
-    public Lst<T> AddRange(IEnumerable<T>? items) {
-      if (items is null) return this;
-      var res = new Lst<T>(Composed.AddRange(items), HashCache);
+    public TDerived AddRange(IEnumerable<T>? items) {
+      if (items is null) return New(this);
+      var res = New(Composed.AddRange(items), HashCache);
       if (res.HashCache is object) foreach (var v in items) res.HashCache.Value.Add(v);
       return res;
     }
 
-    public Lst<T> AddRange(params IEnumerable<T>?[] items) {
+    public TDerived AddRange(params IEnumerable<T>?[] items) {
       var composed = Composed;
       var hash = HashCache;
 
@@ -111,7 +112,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new(composed, hash);
+      return New(composed, hash);
     }
 
     public int BinarySearch(T item) => Composed.BinarySearch(item);
@@ -124,7 +125,7 @@ namespace F {
     public void CopyTo(T[] array, int arrayIndex) => Composed.CopyTo(array, arrayIndex);
     public bool Exists(Predicate<T> match) => Composed.Exists(match);
 
-    public Lst<T> FindAll(Predicate<T> match) => new(Composed.FindAll(match));
+    public TDerived FindAll(Predicate<T> match) => New(Composed.FindAll(match));
     public int FindIndex(Predicate<T> match) => Composed.FindIndex(match);
     public int FindIndex(int startIndex, Predicate<T> match) => Composed.FindIndex(startIndex, match);
     public int FindIndex(int startIndex, int count, Predicate<T> match) => Composed.FindIndex(startIndex, count, match);
@@ -132,86 +133,98 @@ namespace F {
     public int FindLastIndex(int startIndex, Predicate<T> match) => Composed.FindLastIndex(startIndex, match);
     public int FindLastIndex(Predicate<T> match) => Composed.FindLastIndex(match);
     public void ForEach(Action<T> action) => Composed.ForEach(action);
-    public Lst<T> GetRange(int index, int count) => new(Composed.GetRange(index, count));
+    public TDerived GetRange(int index, int count) => New(Composed.GetRange(index, count));
     public int IndexOf(T item, int index, int count, IEqualityComparer<T> equalityComparer) => Composed.IndexOf(item, index, count, equalityComparer);
     public int IndexOf(T value) => Composed.IndexOf(value);
 
-    public Lst<T>? Insert(int index, T item) {
+    public TDerived? Insert(int index, T item) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.Insert(index, item)); } catch { return null; }
+      try { return New(Composed.Insert(index, item)); } catch { return null; }
     }
 
-    public Lst<T>? Insert(int index, IEnumerable<T> items) {
+    public TDerived? Insert(int index, IEnumerable<T> items) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.InsertRange(index, items)); } catch { return null; }
+      try { return New(Composed.InsertRange(index, items)); } catch { return null; }
     }
 
     public ref readonly T ItemRef(int index) => ref Composed.ItemRef(index);
     public int LastIndexOf(T item, int index, int count, IEqualityComparer<T> equalityComparer) => Composed.LastIndexOf(item, index, count, equalityComparer);
-    public Lst<T> Remove(T value) => new(Composed.Remove(value));
-    public Lst<T> Remove(T value, IEqualityComparer<T> equalityComparer) => new(Composed.Remove(value, equalityComparer));
-    public Lst<T> RemoveAll(Predicate<T> match) => new(Composed.RemoveAll(match));
+    public TDerived Remove(T value) => New(Composed.Remove(value));
+    public TDerived Remove(T value, IEqualityComparer<T> equalityComparer) => New(Composed.Remove(value, equalityComparer));
+    public TDerived RemoveAll(Predicate<T> match) => New(Composed.RemoveAll(match));
 
-    public Lst<T> RemoveAt(int index) {
-      if (index < 0 || index >= Count) return this;
-      try { return new(Composed.RemoveAt(index)); } catch { return this; }
+    public TDerived RemoveAt(int index) {
+      if (index < 0 || index >= Count) return New(this);
+      try { return New(Composed.RemoveAt(index)); } catch { return New(this); }
     }
 
-    public Lst<T> RemoveRange(IEnumerable<T> items) => new(Composed.RemoveRange(items));
-    public Lst<T> RemoveRange(IEnumerable<T> items, IEqualityComparer<T> equalityComparer) => new(Composed.RemoveRange(items, equalityComparer));
+    public TDerived RemoveRange(IEnumerable<T> items) => New(Composed.RemoveRange(items));
+    public TDerived RemoveRange(IEnumerable<T> items, IEqualityComparer<T> equalityComparer) => New(Composed.RemoveRange(items, equalityComparer));
 
-    public Lst<T> RemoveRange(int index, int count) {
-      if (index < 0 || index >= Count) return this;
-      try { return new(Composed.RemoveRange(index, count)); } catch { return this; }
+    public TDerived RemoveRange(int index, int count) {
+      if (index < 0 || index >= Count) return New(this);
+      try { return New(Composed.RemoveRange(index, count)); } catch { return New(this); }
     }
 
-    public Lst<T> Replace(T oldValue, T newValue) => new(Composed.Replace(oldValue, newValue));
-    public Lst<T> Replace(T oldValue, T newValue, IEqualityComparer<T> equalityComparer) => new(Composed.Replace(oldValue, newValue, equalityComparer));
+    public TDerived Replace(T oldValue, T newValue) => New(Composed.Replace(oldValue, newValue));
+    public TDerived Replace(T oldValue, T newValue, IEqualityComparer<T> equalityComparer) => New(Composed.Replace(oldValue, newValue, equalityComparer));
 
-    public Lst<T>? Reverse(int index, int count) {
+    public TDerived? Reverse(int index, int count) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.Reverse(index, count)); } catch { return null; }
+      try { return New(Composed.Reverse(index, count)); } catch { return null; }
     }
 
-    public Lst<T> Reverse() => new(Composed.Reverse());
+    public TDerived Reverse() => New(Composed.Reverse());
 
-    public Lst<T>? SetItem(int index, T value) {
+    public TDerived? SetItem(int index, T value) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.SetItem(index, value)); } catch { return null; }
+      try { return New(Composed.SetItem(index, value)); } catch { return null; }
     }
 
-    public Lst<T> Sort() => new(Composed.Sort());
-    public Lst<T> Sort(IComparer<T> comparer) => new(Composed.Sort(comparer));
-    public Lst<T> Sort(Comparison<T> comparison) => new(Composed.Sort(comparison));
+    public TDerived Sort() => New(Composed.Sort());
+    public TDerived Sort(IComparer<T> comparer) => New(Composed.Sort(comparer));
+    public TDerived Sort(Comparison<T> comparison) => New(Composed.Sort(comparison));
 
-    public Lst<T>? Sort(int index, int count, IComparer<T> comparer) {
+    public TDerived? Sort(int index, int count, IComparer<T> comparer) {
       if (index < 0 || index >= Count) return default;
-      try { return new(Composed.Sort(index, count, comparer)); } catch { return null; }
+      try { return New(Composed.Sort(index, count, comparer)); } catch { return null; }
     }
 
     public ImmutableList<T>.Builder ToBuilder() => Composed.ToBuilder();
-    IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
-    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
-    public Lst<T> Remove(IEnumerable<T> items) => RemoveRange(items);
-    public IEnumerator<T> GetEnumerator() => (this as IEnumerable<T>).GetEnumerator();
+    public TDerived Remove(IEnumerable<T> items) => RemoveRange(items);
+
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)Composed).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Composed).GetEnumerator();
   }
 
 
+  public sealed record Lst<T> : LstBase<Lst<T>, T> {
+    public Lst() : base() { }
+    public Lst(params T?[] p) : base(p) { }
+    public Lst(params IEnumerable<T>?[] ps) : base(ps) { }
+  }
+
+
+  // Base class for Set<T> and any user defined Set
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Set<T> : IEnumerable<T>, IEnumerable {
-    [FIgnore] readonly ImmutableHashSet<T> Composed;
-    [FIgnore] HashCode? HashCache;
+  public abstract record SetBase<TDerived, T> : IEnumerable<T>, IEnumerable
+    where TDerived : SetBase<TDerived, T>, new() {
 
-    Set(ImmutableHashSet<T> composed) => (Composed, HashCache) = (composed, null);
+    [FIgnore] protected ImmutableHashSet<T> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
 
-    public Set() : this(ImmutableHashSet<T>.Empty) { }
-    public Set(params T?[] p) : this(new Set<T>().Union(p)) { }
-    public Set(params IEnumerable<T>?[] p) : this(new Set<T>().Union(p)) { }
+    public SetBase() => Composed = ImmutableHashSet<T>.Empty;
+    public SetBase(params T?[] p) => Composed = ImmutableHashSet<T>.Empty.Union(p.Where(t => t is object)!);
+    public SetBase(params IEnumerable<T>?[] ps) => Composed = ps.Aggregate(ImmutableHashSet<T>.Empty, (total, p) => p is null ? total : total.Union(p));
+    protected SetBase(ImmutableHashSet<T> composed) => Composed = composed;
 
-    public override string ToString() => ToString(',');
+    protected static TDerived New(ImmutableHashSet<T> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<T> p) => new() { Composed = p.ToImmutableHashSet() };
+
+    public sealed override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Set<T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(((Set<T>)obj).Composed);
+    public virtual bool Equals(SetBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(obj.Composed);
 
     override public int GetHashCode() {
       if (HashCache is null) {
@@ -221,19 +234,15 @@ namespace F {
       return HashCache.Value.ToHashCode();
     }
 
-    public Set<T> RemoveAll(Predicate<T> match) => new(this.Where(v => !match(v)));
+    public static TDerived operator +(SetBase<TDerived, T> o, T v) => o.Add(v);
+    public static TDerived operator +(SetBase<TDerived, T> o, IEnumerable<T> other) => o.Union(other);
+    public static TDerived operator -(SetBase<TDerived, T> o, T v) => o.Remove(v);
+    public static TDerived operator -(SetBase<TDerived, T> o, IEnumerable<T> other) => o.Except(other);
+    public static TDerived operator -(SetBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
 
-    public static Set<T> operator +(Set<T> o, T v) => o.Add(v);
-    public static Set<T> operator +(Set<T> o, Set<T> other) => o.Union(other);
-    public static Set<T> operator -(Set<T> o, T v) => o.Remove(v);
-    public static Set<T> operator -(Set<T> o, IEnumerable<T> other) => o.Except(other);
-    public static Set<T> operator -(Set<T> o, Predicate<T> match) => o.RemoveAll(match);
+    public TDerived RemoveAll(Predicate<T> match) => New(this.Where(v => !match(v)));
 
-    public Set<T> Union(params IEnumerable<T>?[] items) {
-      var res = Composed;
-      foreach (var item in items) if (item is object) res = res.Union(item);
-      return new(res);
-    }
+    public TDerived Union(params IEnumerable<T>?[] ps) => New(ps.Aggregate(Composed, (total, p) => p is null ? total : total.Union(p)));
 
     // the rest of the methods just proxy to Composed
 
@@ -242,50 +251,54 @@ namespace F {
     public bool NotEmpty { get { return !IsEmpty; } }
     public int Count { get { return Composed.Count; } }
 
-    public Set<T> Add(T item) => new(Composed.Add(item));
+    public TDerived Add(T item) => New(Composed.Add(item));
     public bool Contains(T item) => Composed.Contains(item);
-    public Set<T> Except(IEnumerable<T> other) => new(Composed.Except(other));
-    public Set<T> Intersect(IEnumerable<T> other) => new(Composed.Intersect(other));
+    public TDerived Except(IEnumerable<T> other) => New(Composed.Except(other));
+    public TDerived Intersect(IEnumerable<T> other) => New(Composed.Intersect(other));
     public bool IsProperSubsetOf(IEnumerable<T> other) => Composed.IsProperSubsetOf(other);
     public bool IsProperSupersetOf(IEnumerable<T> other) => Composed.IsProperSupersetOf(other);
     public bool IsSubsetOf(IEnumerable<T> other) => Composed.IsSubsetOf(other);
     public bool IsSupersetOf(IEnumerable<T> other) => Composed.IsSupersetOf(other);
     public bool Overlaps(IEnumerable<T> other) => Composed.Overlaps(other);
-    public Set<T> Remove(T item) => new(Composed.Remove(item));
+    public TDerived Remove(T item) => New(Composed.Remove(item));
     public bool SetEquals(IEnumerable<T> other) => Composed.SetEquals(other);
-    public Set<T> SymmetricExcept(IEnumerable<T> other) => new(Composed.SymmetricExcept(other));
-    public Set<T> Union(IEnumerable<T?> other) => new(Composed.Union(other.Where(t => t is object)!));
+    public TDerived SymmetricExcept(IEnumerable<T> other) => New(Composed.SymmetricExcept(other));
+    public TDerived Union(IEnumerable<T?> other) => New(Composed.Union(other.Where(t => t is object)!));
     public ImmutableHashSet<T>.Builder ToBuilder() => Composed.ToBuilder();
-    public IEnumerator<T> GetEnumerator() => Composed.GetEnumerator();
-    IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
-    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
+
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)Composed).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Composed).GetEnumerator();
+  }
+
+  // the default concrete SetBase
+  public sealed record Set<T> : SetBase<Set<T>, T> {
+    public Set() : base() { }
+    public Set(params T?[] p) : base(p) { }
+    public Set(params IEnumerable<T>?[] p) : base(p) { }
   }
 
 
+  // Base class for Set<T> and any user defined Set
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Map<TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable where TKey : notnull {
-    [FIgnore] readonly ImmutableDictionary<TKey, TValue> Composed;
-    [FIgnore] HashCode? HashCache;
+  public abstract record OrderedSetBase<TDerived, T> : IEnumerable<T>, IEnumerable
+    where TDerived : OrderedSetBase<TDerived, T>, new() {
 
-    Map(ImmutableDictionary<TKey, TValue> composed) => (Composed, HashCache) = (composed, null);
+    [FIgnore] protected ImmutableSortedSet<T> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
 
-    public Map() : this(ImmutableDictionary<TKey, TValue>.Empty) { }
-    public Map(TKey key, TValue val) : this(new Map<TKey, TValue>().Add(key, val)) { }
-    public Map(params (TKey key, TValue val)?[] items) : this(new Map<TKey, TValue>().SetItems(items)) { }
-    public Map(params IEnumerable<(TKey key, TValue val)>?[] items) : this(new Map<TKey, TValue>().SetItems(items)) { }
-    public Map(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : this(new Map<TKey, TValue>().SetItems(items)) { }
+    public OrderedSetBase() => Composed = ImmutableSortedSet<T>.Empty;
+    public OrderedSetBase(params T?[] p) => Composed = ImmutableSortedSet<T>.Empty.Union(p.Where(t => t is object)!);
+    public OrderedSetBase(params IEnumerable<T>?[] ps) => Composed = ps.Aggregate(ImmutableSortedSet<T>.Empty, (total, p) => p is null ? total : total.Union(p));
+    protected OrderedSetBase(ImmutableSortedSet<T> composed) => Composed = composed;
 
-    public override string ToString() => ToString(','); 
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
+    protected static TDerived New(ImmutableSortedSet<T> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<T> p) => new() { Composed = p.ToImmutableSortedSet() };
 
-    public bool Equals(Map<TKey, TValue>? obj) {
-      if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
-      foreach (var (d1key, d1value) in Composed) {
-        if (!obj.Composed.TryGetValue(d1key, out TValue? d2value)) return false;
-        if (!object.Equals(d1value, d2value)) return false;
-      }
-      return true;
-    }
+    public sealed override string ToString() => ToString(',');
+    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+
+    public virtual bool Equals(OrderedSetBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(obj.Composed);
+
     override public int GetHashCode() {
       if (HashCache is null) {
         HashCache = new();
@@ -294,38 +307,108 @@ namespace F {
       return HashCache.Value.ToHashCode();
     }
 
-    public Map<TKey, TValue> Remove(Func<TKey, TValue, bool> match) {
-      bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
-      if (match is null) throw new ArgumentNullException(nameof(match));
-      return new(this.Where(kv => !pred(kv)));
+    public static TDerived operator +(OrderedSetBase<TDerived, T> o, T v) => o.Add(v);
+    public static TDerived operator +(OrderedSetBase<TDerived, T> o, IEnumerable<T> other) => o.Union(other);
+    public static TDerived operator -(OrderedSetBase<TDerived, T> o, T v) => o.Remove(v);
+    public static TDerived operator -(OrderedSetBase<TDerived, T> o, IEnumerable<T> other) => o.Except(other);
+    public static TDerived operator -(OrderedSetBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
+
+    public TDerived RemoveAll(Predicate<T> match) => New(this.Where(v => !match(v)));
+
+    public TDerived Union(params IEnumerable<T>?[] ps) => New(ps.Aggregate(Composed, (total, p) => p is null ? total : total.Union(p)));
+
+    // the rest of the methods just proxy to Composed
+
+    public IComparer<T> KeyComparer { get { return Composed.KeyComparer; } }
+    public bool IsEmpty { get { return Composed.IsEmpty; } }
+    public bool NotEmpty { get { return !IsEmpty; } }
+    public int Count { get { return Composed.Count; } }
+
+    public TDerived Add(T item) => New(Composed.Add(item));
+    public bool Contains(T item) => Composed.Contains(item);
+    public TDerived Except(IEnumerable<T> other) => New(Composed.Except(other));
+    public TDerived Intersect(IEnumerable<T> other) => New(Composed.Intersect(other));
+    public bool IsProperSubsetOf(IEnumerable<T> other) => Composed.IsProperSubsetOf(other);
+    public bool IsProperSupersetOf(IEnumerable<T> other) => Composed.IsProperSupersetOf(other);
+    public bool IsSubsetOf(IEnumerable<T> other) => Composed.IsSubsetOf(other);
+    public bool IsSupersetOf(IEnumerable<T> other) => Composed.IsSupersetOf(other);
+    public bool Overlaps(IEnumerable<T> other) => Composed.Overlaps(other);
+    public TDerived Remove(T item) => New(Composed.Remove(item));
+    public bool SetEquals(IEnumerable<T> other) => Composed.SetEquals(other);
+    public TDerived SymmetricExcept(IEnumerable<T> other) => New(Composed.SymmetricExcept(other));
+    public TDerived Union(IEnumerable<T?> other) => New(Composed.Union(other.Where(t => t is object)!));
+    public ImmutableSortedSet<T>.Builder ToBuilder() => Composed.ToBuilder();
+    public TDerived WithComparer(IComparer<T> comparer) => New(Composed.WithComparer(comparer));
+
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)Composed).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Composed).GetEnumerator();
+  }
+
+  // the default concrete OrderedSetBase
+  public sealed record OrderedSet<T> : OrderedSetBase<OrderedSet<T>, T> {
+    public OrderedSet() : base() { }
+    public OrderedSet(params T?[] p) : base(p) { }
+    public OrderedSet(params IEnumerable<T>?[] p) : base(p) { }
+  }
+
+
+  [JsonConverter(typeof(JsonFCollectionConverter))]
+  public abstract record MapBase<TDerived, TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable 
+    where TKey : notnull where TDerived : MapBase<TDerived, TKey, TValue>, new() {
+
+    [FIgnore] protected ImmutableDictionary<TKey, TValue> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
+
+    public MapBase() => Composed = ImmutableDictionary<TKey, TValue>.Empty; 
+    public MapBase(TKey key, TValue val) => Composed = ImmutableDictionary<TKey, TValue>.Empty.Add(key, val); 
+    public MapBase(params (TKey key, TValue val)?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)); 
+    public MapBase(params IEnumerable<(TKey key, TValue val)>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val)))); 
+    public MapBase(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p)); 
+    protected MapBase(ImmutableDictionary<TKey, TValue> composed) => Composed = composed;
+
+    protected static TDerived New(ImmutableDictionary<TKey, TValue> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<(TKey key, TValue val)> p) => new() { Composed = p.ToImmutableDictionary(t => t.key, t => t.val) };
+
+    public sealed override string ToString() => ToString(','); 
+    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
+
+    public virtual bool Equals(MapBase<TDerived, TKey, TValue>? obj) {
+      if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
+      foreach (var (d1key, d1value) in Composed) {
+        if (!obj.Composed.TryGetValue(d1key, out TValue? d2value)) return false;
+        if (!object.Equals(d1value, d2value)) return false;
+      }
+      return true;
     }
 
-    public static Map<TKey, TValue> operator +(Map<TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
-    public static Map<TKey, TValue> operator +(Map<TKey, TValue> o, Map<TKey, TValue> pairs) => o.SetItems(pairs);
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, TKey key) => o.Remove(key);
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, Set<TKey> keys) => new(o.Composed.RemoveRange(keys));
-    public static Map<TKey, TValue> operator -(Map<TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
+    override public int GetHashCode() {
+      if (HashCache is null) {
+        HashCache = new();
+        foreach (var v in Composed) HashCache.Value.Add(v);
+      }
+      return HashCache.Value.ToHashCode();
+    }
+
+    public TDerived Remove(Func<TKey, TValue, bool> match) {
+      bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
+      if (match is null) throw new ArgumentNullException(nameof(match));
+      return New(this.Where(kv => !pred(kv)));
+    }
+
+    public static TDerived operator +(MapBase<TDerived, TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
+    public static TDerived operator +(MapBase<TDerived, TKey, TValue> o, IEnumerable<(TKey key, TValue val)> pairs) => o.SetItems(pairs);
+    public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, TKey key) => o.Remove(key);
+    public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, Set<TKey> keys) => New(o.Composed.RemoveRange(keys));
+    public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
 
     // use this if T is a non-nullable reference type
     public TValue? this[TKey key] => Composed.TryGetValue(key, out var value) ? value : default;
 
-    public Map<TKey, TValue> SetItems(params (TKey key, TValue val)?[] items) {
-      var res = Composed;
-      foreach (var item in items) if (item is object) res = res.SetItem(item.Value.key, item.Value.val);
-      return new(res);
-    }
+    public TDerived SetItems(params (TKey key, TValue val)?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)));
 
-    public Map<TKey, TValue> SetItems(params IEnumerable<(TKey key, TValue val)>?[] items) {
-      var res = Composed;
-      foreach (var item in items) if (item is object) foreach (var (key, val) in item) res = res.SetItem(key, val);
-      return new(res);
-    }
+    public TDerived SetItems(params IEnumerable<(TKey key, TValue val)>?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.AddRange(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val)))));
 
-    public Map<TKey, TValue> SetItems(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) {
-      var res = Composed;
-      foreach (var item in items) if (item is object) foreach (var kvp in item) res = res.SetItem(kvp.Key, kvp.Value);
-      return new(res);
-    }
+    public TDerived SetItems(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.AddRange(p)));
 
     // the rest of the methods just proxy to Composed
 
@@ -338,18 +421,18 @@ namespace F {
     public bool IsEmpty { get { return Composed.IsEmpty; } }
     public bool NotEmpty { get { return !IsEmpty; } }
 
-    public Map<TKey, TValue> Add(TKey key, TValue value) => new(Composed.Add(key, value));
-    public Map<TKey, TValue> AddRange(IEnumerable<KeyValuePair<TKey, TValue>>? pairs) => pairs is null ? this : new(Composed.AddRange(pairs));
+    public TDerived Add(TKey key, TValue value) => New(Composed.Add(key, value));
+    public TDerived AddRange(IEnumerable<KeyValuePair<TKey, TValue>>? pairs) => pairs is null ? New(this) : New(Composed.AddRange(pairs));
 
     public bool Contains(KeyValuePair<TKey, TValue> pair) => Composed.Contains(pair);
     public bool ContainsKey(TKey key) => Composed.ContainsKey(key);
     public bool ContainsValue(TValue value) => Composed.ContainsValue(value);
 
-    public Map<TKey, TValue> Remove(TKey key) => new(Composed.Remove(key));
-    public Map<TKey, TValue> RemoveRange(IEnumerable<TKey> keys) => new(Composed.RemoveRange(keys));
+    public TDerived Remove(TKey key) => New(Composed.Remove(key));
+    public TDerived RemoveRange(IEnumerable<TKey> keys) => New(Composed.RemoveRange(keys));
 
-    public Map<TKey, TValue> SetItem(TKey key, TValue value) => new(Composed.SetItem(key, value));
-    public Map<TKey, TValue> SetItems(IEnumerable<KeyValuePair<TKey, TValue>> items) => new(Composed.SetItems(items));
+    public TDerived SetItem(TKey key, TValue value) => New(Composed.SetItem(key, value));
+    public TDerived SetItems(IEnumerable<KeyValuePair<TKey, TValue>> items) => New(Composed.SetItems(items));
 
     public ImmutableDictionary<TKey, TValue>.Builder ToBuilder() => Composed.ToBuilder();
 
@@ -357,29 +440,52 @@ namespace F {
       var e = Composed.GetEnumerator();
       while (e.MoveNext()) yield return (e.Current.Key, e.Current.Value);
     }
-    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
     public IEnumerator<(TKey, TValue)> GetEnumerator() => (this as IEnumerable<(TKey, TValue)>).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
 
     public bool TryGetKey(TKey equalKey, out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
     public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
   }
 
 
+  public sealed record Map<TKey, TValue> : MapBase<Map<TKey, TValue>, TKey, TValue> where TKey : notnull {
+    public Map() : base() { }
+    public Map(TKey key, TValue val) : base(key, val) { }
+    public Map(params (TKey key, TValue val)?[] items) : base(items) { }
+    public Map(params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
+    public Map(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
+  }
+
+
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Que<T> : IEnumerable<T>, IEnumerable {
-    [FIgnore] readonly ImmutableQueue<T> Composed;
-    [FIgnore] HashCode? HashCache;
+  public abstract record OrderedMapBase<TDerived, TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable
+    where TKey : notnull where TDerived : OrderedMapBase<TDerived, TKey, TValue>, new() {
 
-    Que(ImmutableQueue<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
+    [FIgnore] protected ImmutableSortedDictionary<TKey, TValue> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
 
-    public Que() : this(ImmutableQueue<T>.Empty) { }
-    public Que(params T?[] p) : this(new Que<T>().Enqueue(p)) { }
-    public Que(params IEnumerable<T>?[] p) : this(new Que<T>().Enqueue(p)) { }
+    public OrderedMapBase() => Composed = ImmutableSortedDictionary<TKey, TValue>.Empty;
+    public OrderedMapBase(TKey key, TValue val) => Composed = ImmutableSortedDictionary<TKey, TValue>.Empty.Add(key, val);
+    public OrderedMapBase(params (TKey key, TValue val)?[] ps) => Composed = ps.Aggregate(ImmutableSortedDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val));
+    public OrderedMapBase(params IEnumerable<(TKey key, TValue val)>?[] ps) => Composed = ps.Aggregate(ImmutableSortedDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val))));
+    public OrderedMapBase(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => Composed = ps.Aggregate(ImmutableSortedDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p));
+    protected OrderedMapBase(ImmutableSortedDictionary<TKey, TValue> composed) => Composed = composed;
 
-    public override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    protected static TDerived New(ImmutableSortedDictionary<TKey, TValue> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<(TKey key, TValue val)> p) => new() { Composed = p.ToImmutableSortedDictionary(t => t.key, t => t.val) };
 
-    public bool Equals(Que<T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Que<T>)obj).Composed);
+    public sealed override string ToString() => ToString(',');
+    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
+
+    public virtual bool Equals(OrderedMapBase<TDerived, TKey, TValue>? obj) {
+      if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
+      foreach (var (d1key, d1value) in Composed) {
+        if (!obj.Composed.TryGetValue(d1key, out TValue? d2value)) return false;
+        if (!object.Equals(d1value, d2value)) return false;
+      }
+      return true;
+    }
+
     override public int GetHashCode() {
       if (HashCache is null) {
         HashCache = new();
@@ -388,7 +494,104 @@ namespace F {
       return HashCache.Value.ToHashCode();
     }
 
-    public static Que<T> operator +(Que<T> o, T v) => o.Enqueue(v);
+    public TDerived Remove(Func<TKey, TValue, bool> match) {
+      bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
+      if (match is null) throw new ArgumentNullException(nameof(match));
+      return New(this.Where(kv => !pred(kv)));
+    }
+
+    public static TDerived operator +(OrderedMapBase<TDerived, TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
+    public static TDerived operator +(OrderedMapBase<TDerived, TKey, TValue> o, IEnumerable<(TKey key, TValue val)> pairs) => o.SetItems(pairs);
+    public static TDerived operator -(OrderedMapBase<TDerived, TKey, TValue> o, TKey key) => o.Remove(key);
+    public static TDerived operator -(OrderedMapBase<TDerived, TKey, TValue> o, Set<TKey> keys) => New(o.Composed.RemoveRange(keys));
+    public static TDerived operator -(OrderedMapBase<TDerived, TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
+
+    // use this if T is a non-nullable reference type
+    public TValue? this[TKey key] => Composed.TryGetValue(key, out var value) ? value : default;
+
+    public TDerived SetItems(params (TKey key, TValue val)?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)));
+
+    public TDerived SetItems(params IEnumerable<(TKey key, TValue val)>?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.AddRange(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val)))));
+
+    public TDerived SetItems(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.AddRange(p)));
+
+    // the rest of the methods just proxy to Composed
+
+    public IComparer<TKey> KeyComparer { get { return Composed.KeyComparer; } }
+    public IEnumerable<TKey> Keys { get { return Composed.Keys; } }
+    public IEqualityComparer<TValue> ValueComparer { get { return Composed.ValueComparer; } }
+    public IEnumerable<TValue> Values { get { return Composed.Values; } }
+    public int Count { get { return Composed.Count; } }
+
+    public bool IsEmpty { get { return Composed.IsEmpty; } }
+    public bool NotEmpty { get { return !IsEmpty; } }
+
+    public TDerived Add(TKey key, TValue value) => New(Composed.Add(key, value));
+    public TDerived AddRange(IEnumerable<KeyValuePair<TKey, TValue>>? pairs) => pairs is null ? New(this) : New(Composed.AddRange(pairs));
+
+    public bool Contains(KeyValuePair<TKey, TValue> pair) => Composed.Contains(pair);
+    public bool ContainsKey(TKey key) => Composed.ContainsKey(key);
+    public bool ContainsValue(TValue value) => Composed.ContainsValue(value);
+
+    public TDerived Remove(TKey key) => New(Composed.Remove(key));
+    public TDerived RemoveRange(IEnumerable<TKey> keys) => New(Composed.RemoveRange(keys));
+
+    public TDerived SetItem(TKey key, TValue value) => New(Composed.SetItem(key, value));
+    public TDerived SetItems(IEnumerable<KeyValuePair<TKey, TValue>> items) => New(Composed.SetItems(items));
+
+    public ImmutableSortedDictionary<TKey, TValue>.Builder ToBuilder() => Composed.ToBuilder();
+
+    IEnumerator<(TKey, TValue)> IEnumerable<(TKey, TValue)>.GetEnumerator() {
+      var e = Composed.GetEnumerator();
+      while (e.MoveNext()) yield return (e.Current.Key, e.Current.Value);
+    }
+    public IEnumerator<(TKey, TValue)> GetEnumerator() => (this as IEnumerable<(TKey, TValue)>).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
+
+    public bool TryGetKey(TKey equalKey, out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
+    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
+
+    public TDerived WithComparer(IComparer<TKey> comparers) => New(Composed.WithComparers(comparers));
+  }
+
+
+  public sealed record SortedMap<TKey, TValue> : OrderedMapBase<SortedMap<TKey, TValue>, TKey, TValue> where TKey : notnull {
+    public SortedMap() : base() { }
+    public SortedMap(TKey key, TValue val) : base(key, val) { }
+    public SortedMap(params (TKey key, TValue val)?[] items) : base(items) { }
+    public SortedMap(params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
+    public SortedMap(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
+  }
+
+
+  [JsonConverter(typeof(JsonFCollectionConverter))]
+  public abstract record QueBase<TDerived, T> : IEnumerable<T>, IEnumerable
+    where TDerived : QueBase<TDerived, T>, new() {
+
+    [FIgnore] protected ImmutableQueue<T> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
+
+    public QueBase() => Composed = ImmutableQueue<T>.Empty;
+    public QueBase(params T?[] p) => Composed = p.Aggregate(ImmutableQueue<T>.Empty, (t, v) => v is null ? t : t.Enqueue(v));
+    public QueBase(params IEnumerable<T>?[] p) => Composed = p.SelectMany(x => x ?? Enumerable.Empty<T>()).Aggregate(ImmutableQueue<T>.Empty, (t, v) => v is null ? t : t.Enqueue(v));
+    protected QueBase(ImmutableQueue<T> composed) => Composed = composed;
+
+    protected static TDerived New(ImmutableQueue<T> p, HashCode? hashCode = null) => new() { Composed = p, HashCache = hashCode }; // also used for json deserialization
+    //static TDerived New(IEnumerable<T> p, HashCode? hashCode = null) => New(p.Aggregate(ImmutableQueue<T>.Empty, (t, v) => t.Enqueue(v)), hashCode);
+
+    public sealed override string ToString() => ToString(',');
+    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+
+    public virtual bool Equals(QueBase<TDerived, T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((QueBase<TDerived, T>)obj).Composed);
+    override public int GetHashCode() {
+      if (HashCache is null) {
+        HashCache = new();
+        foreach (var v in Composed) HashCache.Value.Add(v);
+      }
+      return HashCache.Value.ToHashCode();
+    }
+
+    public static TDerived operator +(QueBase<TDerived, T> o, T v) => o.Enqueue(v);
 
     public T? Peek() {
       if (IsEmpty) return default;
@@ -401,7 +604,7 @@ namespace F {
       try { value = Composed.Peek(); return true; } catch { value = default; return false; }
     }
 
-    public Que<T> Enqueue(params IEnumerable<T>?[] items) {
+    public TDerived Enqueue(params IEnumerable<T>?[] items) {
       var composed = Composed;
       var hash = HashCache;
 
@@ -411,7 +614,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new(composed, hash);
+      return New(composed, hash);
     }
 
     // the rest of the methods just proxy to Composed
@@ -420,34 +623,44 @@ namespace F {
 
     public int Count { get { return Composed.Count(); } } // todo cache
 
-    public (Que<T> Que, T Value) Dequeue() { var newq = Composed.Dequeue(out T v); return (new(newq), v); }
-    public Que<T> Enqueue(T v) {
-      var res = new Que<T>(Composed.Enqueue(v), HashCache);
+    public (TDerived Que, T Value) Dequeue() { var newq = Composed.Dequeue(out T v); return (New(newq), v); }
+    public TDerived Enqueue(T v) {
+      var res = New(Composed.Enqueue(v), HashCache);
       if (res.HashCache is object) res.HashCache.Value.Add(v);
       return res;
     }
-    public Que<T> Enqueue(IEnumerable<T?> v) => v.Aggregate(new Que<T>(), (total, next) => next is object ? total.Enqueue(next) : total);
+    public TDerived Enqueue(IEnumerable<T?> v) => v.Aggregate(new TDerived(), (total, next) => next is object ? total.Enqueue(next) : total);
 
-    IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
-    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)Composed).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Composed).GetEnumerator();
+  }
+
+  public sealed record Que<T> : QueBase<Que<T>, T> {
+    public Que() : base() { }
+    public Que(params T?[] p) : base(p) { }
+    public Que(params IEnumerable<T>?[] ps) : base(ps) { }
   }
 
 
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public sealed record Arr<T> : IEnumerable<T>, IEnumerable {
-    [FIgnore] readonly ImmutableArray<T> Composed;
-    [FIgnore] HashCode? HashCache;
+  public abstract record ArrBase<TDerived, T> : IEnumerable<T>, IEnumerable
+    where TDerived : ArrBase<TDerived, T>, new() {
 
-    Arr(ImmutableArray<T> composed, HashCode? hashCode = null) => (Composed, HashCache) = (composed, hashCode);
+    [FIgnore] protected ImmutableArray<T> Composed { get; init; }
+    [FIgnore] protected HashCode? HashCache;
 
-    public Arr() : this(ImmutableArray<T>.Empty) { }
-    public Arr(params T?[] p) : this(new Arr<T>().AddRange(p.Where(x => x is object)!)) { }
-    public Arr(params IEnumerable<T>?[] p) : this(new Arr<T>().AddRange(p)) { }
+    public ArrBase() => Composed = ImmutableArray<T>.Empty; 
+    public ArrBase(params T?[] p) => Composed = ImmutableArray<T>.Empty.AddRange(p.Where(x => x is object)!); 
+    public ArrBase(params IEnumerable<T>?[] ps) => Composed = ImmutableArray<T>.Empty.AddRange(ps.SelectMany(x => x ?? Enumerable.Empty<T>())); 
+    protected ArrBase(ImmutableArray<T> composed) => Composed = composed;
 
-    public override string ToString() => ToString(',');
+    protected static TDerived New(ImmutableArray<T> p) => new() { Composed = p }; // also used for json deserialization
+    static TDerived New(IEnumerable<T> p, HashCode? hashCode = null) => new() { Composed = p.ToImmutableArray(), HashCache = hashCode };
+
+    public sealed override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
 
-    public bool Equals(Arr<T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((Arr<T>)obj).Composed);
+    public virtual bool Equals(ArrBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
     override public int GetHashCode() {
       if (HashCache is null) {
         HashCache = new();
@@ -456,11 +669,11 @@ namespace F {
       return HashCache.Value.ToHashCode();
     }
 
-    public static Arr<T> operator +(Arr<T> o, T v) => o.Add(v);
-    public static Arr<T> operator +(Arr<T> o, Arr<T> items) => o.AddRange(items);
-    public static Arr<T> operator -(Arr<T> o, T v) => o.Remove(v);
-    public static Arr<T> operator -(Arr<T> o, Arr<T> items) => o.RemoveRange(items);
-    public static Arr<T> operator -(Arr<T> o, Predicate<T> match) => o.RemoveAll(match);
+    public static TDerived operator +(ArrBase<TDerived, T> o, T v) => o.Add(v);
+    public static TDerived operator +(ArrBase<TDerived, T> o, IEnumerable<T> items) => o.AddRange(items);
+    public static TDerived operator -(ArrBase<TDerived, T> o, T v) => o.Remove(v);
+    public static TDerived operator -(ArrBase<TDerived, T> o, IEnumerable<T> items) => o.RemoveRange(items);
+    public static TDerived operator -(ArrBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
 
     public T? this[int index] { get {
         if (index < 0 || index >= Count) return default;
@@ -475,42 +688,37 @@ namespace F {
 
     public int Count { get { return Composed.Length; } }
 
-    public Arr<T>? Insert(int index, T item) {
+    public TDerived? Insert(int index, T item) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.Insert(index, item)); } catch { return null; }
+      try { return New(Composed.Insert(index, item)); } catch { return null; }
     }
 
-    public Arr<T>? RemoveAt(int index) {
-      if (index < 0 || index >= Count) return this;
-      try { return new(Composed.RemoveAt(index)); } catch { return null; }
+    public TDerived? RemoveAt(int index) {
+      if (index < 0 || index >= Count) return New(this);
+      try { return New(Composed.RemoveAt(index)); } catch { return null; }
     }
 
-    public Arr<T>? InsertRange(int index, IEnumerable<T> items) {
+    public TDerived? InsertRange(int index, IEnumerable<T> items) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.InsertRange(index, items)); } catch { return null; }
+      try { return New(Composed.InsertRange(index, items)); } catch { return null; }
     }
 
-    public Arr<T>? InsertRange(int index, Arr<T> items) {
+    public TDerived? RemoveRange(int index, int count) {
+      if (index < 0 || index >= Count) return New(this);
+      try { return New(Composed.RemoveRange(index, count)); } catch { return null; }
+    }
+
+    public TDerived? SetItem(int index, T value) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.InsertRange(index, items.Composed)); } catch { return null; }
+      try { return New(Composed.SetItem(index, value)); } catch { return null; }
     }
 
-    public Arr<T>? RemoveRange(int index, int count) {
-      if (index < 0 || index >= Count) return this;
-      try { return new(Composed.RemoveRange(index, count)); } catch { return null; }
-    }
-
-    public Arr<T>? SetItem(int index, T value) {
+    public TDerived? Sort(int index, int count, IComparer<T> comparer) {
       if (index < 0 || index >= Count) return null;
-      try { return new(Composed.SetItem(index, value)); } catch { return null; }
+      try { return New(Composed.Sort(index, count, comparer)); } catch { return null; }
     }
 
-    public Arr<T>? Sort(int index, int count, IComparer<T> comparer) {
-      if (index < 0 || index >= Count) return null;
-      try { return new(Composed.Sort(index, count, comparer)); } catch { return null; }
-    }
-
-    public Arr<T> AddRange(params IEnumerable<T>?[] items) {
+    public TDerived AddRange(params IEnumerable<T>?[] items) {
       var composed = Composed;
       var hash = HashCache;
 
@@ -520,7 +728,7 @@ namespace F {
         if (hash is object) foreach (var v in item) hash.Value.Add(v);
       }
 
-      return new(composed, hash);
+      return New(composed, hash);
     }
 
     // the rest of the methods just proxy to Composed
@@ -531,18 +739,18 @@ namespace F {
     public int Length { get { return Composed.Length; } }
     public bool IsDefaultOrEmpty { get { return Composed.IsDefaultOrEmpty; } }
     public bool IsDefault { get { return Composed.IsDefault; } }
-    public Arr<T> Add(T value) {
-      var res = new Arr<T>(Composed.Add(value), HashCache);
+    public TDerived Add(T value) {
+      var res = New(Composed.Add(value), HashCache);
       if (res.HashCache is object) res.HashCache.Value.Add(value);
       return res;
     }
-    public Arr<T> AddRange(IEnumerable<T>? items) {
-      if (items is null) return this;
-      var res = new Arr<T>(Composed.AddRange(items.Where(x => x is object)!), HashCache);
+    public TDerived AddRange(IEnumerable<T>? items) {
+      if (items is null) return New(this);
+      var res = New(Composed.AddRange(items.Where(x => x is object)!), HashCache);
       if (res.HashCache is object) foreach (var v in items) res.HashCache.Value.Add(v);
       return res;
     }
-    public Arr<T> AddRange(Arr<T>? items) => items is null ? this : new(Composed.AddRange(items.Composed));
+    public TDerived AddRange(TDerived? items) => items is null ? New(this) : New(Composed.AddRange(items.Composed));
     public Arr<TOther> As<TOther>() where TOther : class => new(Composed.As<TOther>());
     public ReadOnlyMemory<T> AsMemory() => Composed.AsMemory();
     public ReadOnlySpan<T> AsSpan() => Composed.AsSpan();
@@ -552,7 +760,7 @@ namespace F {
     public int BinarySearch(int index, int length, T value, IComparer<T> comparer) => Composed.BinarySearch(index, length, value, comparer);
     public Arr<TOther> CastArray<TOther>() where TOther : class => new(Composed.CastArray<TOther>());
     public bool Contains(T value) => Composed.Contains(value);
-    public static Arr<T> CreateRange(IEnumerable<T> items) => new(ImmutableArray.CreateRange(items));
+    public static TDerived CreateRange(IEnumerable<T> items) => New(ImmutableArray.CreateRange(items));
     public static Arr<TResult> CreateRange<TResult>(ImmutableArray<T> items, Func<T, TResult> selector) => new(ImmutableArray.CreateRange(items, selector));
     public void CopyTo(int index, T[] array, int arrayIndex, int count) => Composed.CopyTo(index, array, arrayIndex, count);
     public void CopyTo(T[] array) => Composed.CopyTo(array);
@@ -570,29 +778,35 @@ namespace F {
     public int LastIndexOf(T item, int index, int count) => Composed.LastIndexOf(item, index, count);
     public int LastIndexOf(T item, int index, int count, IEqualityComparer<T> equalityComparer) => Composed.LastIndexOf(item, index, count, equalityComparer);
     public IEnumerable<TResult> OfType<TResult>() => Composed.OfType<TResult>();
-    public Arr<T> Remove(T value) => new(Composed.Remove(value));
-    public Arr<T> Remove(T value, IEqualityComparer<T> equalityComparer) => new(Composed.Remove(value, equalityComparer));
-    public Arr<T> RemoveAll(Predicate<T> match) => new(Composed.RemoveAll(match));
-    public Arr<T> RemoveRange(IEnumerable<T> items) => new(Composed.RemoveRange(items));
-    public Arr<T> RemoveRange(IEnumerable<T> items, IEqualityComparer<T> equalityComparer) => new(Composed.RemoveRange(items, equalityComparer));
-    public Arr<T> RemoveRange(Arr<T> items) => new(Composed.RemoveRange(items.Composed));
-    public Arr<T> RemoveRange(Arr<T> items, IEqualityComparer<T> equalityComparer) => new(Composed.RemoveRange(items.Composed, equalityComparer));
-    public Arr<T> Replace(T oldValue, T newValue) => new(Composed.Replace(oldValue, newValue));
-    public Arr<T> Replace(T oldValue, T newValue, IEqualityComparer<T> equalityComparer) => new(Composed.Replace(oldValue, newValue, equalityComparer));
-    public Arr<T> Sort(IComparer<T> comparer) => new(Composed.Sort(comparer));
-    public Arr<T> Sort(Comparison<T> comparison) => new(Composed.Sort(comparison));
-    public Arr<T> Sort() => new(Composed.Sort());
-    IEnumerator<T> IEnumerable<T>.GetEnumerator() => (Composed as IEnumerable<T>).GetEnumerator();
-    IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
+    public TDerived Remove(T value) => New(Composed.Remove(value));
+    public TDerived Remove(T value, IEqualityComparer<T> equalityComparer) => New(Composed.Remove(value, equalityComparer));
+    public TDerived RemoveAll(Predicate<T> match) => New(Composed.RemoveAll(match));
+    public TDerived RemoveRange(IEnumerable<T> items) => New(Composed.RemoveRange(items));
+    public TDerived RemoveRange(IEnumerable<T> items, IEqualityComparer<T> equalityComparer) => New(Composed.RemoveRange(items, equalityComparer));
+    public TDerived Replace(T oldValue, T newValue) => New(Composed.Replace(oldValue, newValue));
+    public TDerived Replace(T oldValue, T newValue, IEqualityComparer<T> equalityComparer) => New(Composed.Replace(oldValue, newValue, equalityComparer));
+    public TDerived Sort(IComparer<T> comparer) => New(Composed.Sort(comparer));
+    public TDerived Sort(Comparison<T> comparison) => New(Composed.Sort(comparison));
+    public TDerived Sort() => New(Composed.Sort());
     public ImmutableArray<T>.Builder ToBuilder() => Composed.ToBuilder();
+
+    public IEnumerator<T> GetEnumerator() => ((IEnumerable<T>)Composed).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)Composed).GetEnumerator();
+  }
+
+
+  public sealed record Arr<T> : ArrBase<Arr<T>, T> {
+    public Arr() : base() { }
+    public Arr(params T?[] p) : base(p) { }
+    public Arr(params IEnumerable<T>?[] ps) : base(ps) { }
   }
 
 
   class JsonFCollectionConverter : JsonConverter {
-    static FieldInfo GetCompositorField(Type? t) {
+    static PropertyInfo GetCompositor(Type? t) {
       while (t != null) {
-        var fields = t.GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(p => p.Name == "Composed");
-        if (fields.Count() == 1) return fields.First();
+        var properties = t.GetProperties(BindingFlags.Instance | BindingFlags.NonPublic).Where(p => p.Name == "Composed");
+        if (properties.Count() == 1) return properties.First();
         t = t.BaseType;
       }
       throw new JsonSerializationException();
@@ -603,21 +817,34 @@ namespace F {
       return fields.Count() == 1;
     }
 
-    // assumes Compositor<T> has either a constructor accepting T or an empty constructor
     public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer) {
       while (reader.TokenType == JsonToken.Comment && reader.Read()) { };
       if (reader.TokenType == JsonToken.Null) return null;
-      var compositorField = GetCompositorField(objectType);
-      var compositorType = compositorField.FieldType;
+      var compositor = GetCompositor(objectType);
+      var compositorType = compositor.PropertyType;
       var compositorValue = serializer.Deserialize(reader, compositorType);
       if (compositorValue is null) throw new JsonSerializationException();
-      return Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { compositorValue }, null);
+      try {
+        return Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { compositorValue }, null); // try ctor
+      }
+      catch (Exception) { // try empty ctor
+        try {
+          var instance = Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, null, null);
+          compositor.SetValue(instance, compositorValue);
+          return instance;
+        }
+        catch (Exception) { // try calling New
+          var factory = objectType.GetMethod("New", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy, new Type[] { compositorType });
+          if (factory is null) throw;
+          return factory.Invoke(null, new object[] { compositorValue }); // first try using New method if exists
+        }
+      }
     }
 
     public override void WriteJson(JsonWriter writer, object? o, JsonSerializer serializer) {
       if (o is null) return;
-      var compositorField = GetCompositorField(o.GetType());
-      var value = compositorField.GetValue(o);
+      var compositor = GetCompositor(o.GetType());
+      var value = compositor.GetValue(o);
       serializer.Serialize(writer, value);
     }
   }
@@ -627,6 +854,7 @@ namespace System.Linq {
   public static class CollectionsExtensionsMethods {
     public static Lst<T> ToLst<T>(this IEnumerable<T> source) => new(source);
     public static Set<T> ToSet<T>(this IEnumerable<T> source) => new(source);
+    public static OrderedSet<T> ToOrderedSet<T>(this IEnumerable<T> source) => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<(TKey key, TValue val)> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue, TSource>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TValue> valueSelector) where TKey : notnull => new(source.ToImmutableDictionary(keySelector, valueSelector));
