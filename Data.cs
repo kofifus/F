@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
@@ -12,154 +11,226 @@ using System.Runtime.CompilerServices;
 #nullable enable
 
 namespace F {
+  using F.Collections;
+  using F.State;
 
+  [FIgnore]
   public static class Data {
 
     // FIgnore excludes the class/field/property from checking 
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false)]
+    [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = false)]
     public sealed class FIgnore : Attribute { }
 
     [FIgnore]
-    static ImmutableDictionary<Type, bool> Verified = ImmutableDictionary<Type, bool>.Empty;
+    static ImmutableDictionary<Type,bool> VerifiedLogic = ImmutableDictionary<Type, bool>.Empty;
+    static ImmutableDictionary<Type,bool> VerifiedData = ImmutableDictionary<Type, bool>.Empty;
 
-    public static void AssertF(Func<Type, bool>? IgnoreFunc=null, Func<Type, bool>? ApproveFunc=null) {
+    public static void AssertF(Func<Type, bool>? customIgnoreFunc=null, Func<Type, bool>? ApprovedDataFunc=null) {
 #if DEBUG
+
+      bool IgnoreFunc(Type t) {
+        string fn = t.FullName ?? t.Name, ns = t.Namespace ?? "";
+        if (ns == "F" || ns.StartsWith("F.State")) return true;
+        if (fn.StartsWith("Microsoft.CodeAnalysis")
+          || fn.StartsWith("System.Runtime.CompilerServices")
+          || fn.StartsWith("<>f__AnonymousType")) return true;
+        return customIgnoreFunc is not null && customIgnoreFunc(t);
+      }
+
       foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) {
-        if (IgnoreFunc is object && IgnoreFunc(t)) continue;
-        Fcheck(t, true, "", true, ApproveFunc);
+        if (IgnoreFunc(t)) continue;
+        var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, null, ApprovedDataFunc);
+        if (isLogic == "") continue;
+        var isData = IsData($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+        if (isData == "") continue;
+
+        // we now call again to retrieve the correct message
+        isLogic = IsLogic(t.Name, t, ImmutableList<Type>.Empty, null, ApprovedDataFunc);
+        isData = IsData(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+        throw new($"Invalid type {ExpandTypeName(t)}:\nNot Data: {isData}\nNot Logic: {isLogic}");
       }
 #endif
     }
 
-    static bool Fcheck(Type t, bool checkFIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
-      if (!Verified.TryGetValue(t, out var isData)) {
-        isData = FcheckInternal(t, checkFIgnore, prefix, assert, ApproveFunc);
-        Verified = Verified.Add(t, isData); // cache it
+    // wrapper around IsLogicInternal that tries a cache hit if prefix starts with "_"
+    static string IsLogic(string prefix, Type t, ImmutableList<Type> parents, ImmutableHashSet<(Type, MemberInfo)>? members, Func<Type, bool>? ApprovedDataFunc) {
+      if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents, members, ApprovedDataFunc);
+
+      if (VerifiedLogic.TryGetValue(t, out var b)) return b ? "" : $"{t} not Logic";
+      var isLogic = IsLogicInternal(prefix, t, parents, members, ApprovedDataFunc);
+      VerifiedLogic = VerifiedLogic.SetItem(t, isLogic=="");
+      Debug.WriteLine($"|| IsLogic {t.FullName} {(isLogic == "" ? "True" : "False")}");
+      return isLogic;
+    }
+
+    static string IsLogicInternal(string prefix, Type t, ImmutableList<Type> parents, ImmutableHashSet<(Type, MemberInfo)>? members, Func<Type, bool>? ApprovedDataFunc) {
+      parents = parents.Add(t);
+
+      members ??= GetFieldsAndProperties(t)
+        .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
+        .Where(vt => !vt.memberType.Equals(t))
+        .Where(vt => !parents.Contains(vt.memberType)) // avoid recursion
+        .ToImmutableHashSet();
+
+      foreach (var (memberType, memberInfo) in members) {
+        if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
+        if (CheckFIgnore(t, memberInfo.DeclaringType)) continue;
+
+        if (memberType.IsPrimitive) return $"{prefix}.{memberInfo.Name} cannot be a basic type";
+
+        if (t.IsClass) {
+          var isRecord = t.GetMethod("<Clone>$") is not null;
+          if (isRecord) return $"{prefix} cannot be a record";
+        }
+
+        var isState = ImplementsOrDerives(memberType, typeof(IStateVal<>)) || ImplementsOrDerives(memberType, typeof(IStateRef<>));
+        if (isState) {
+          var isPublic = IsMemeberPublic(memberInfo);
+          if (isPublic) return $"{prefix}.{memberInfo.Name} cannot be a pubic State";
+          continue;
+        }
+
+        var isLogic = IsLogic($"{prefix}.{memberInfo.Name}" , memberType, parents.Add(memberType), null, ApprovedDataFunc);
+
+        if (isLogic != "") return isLogic;
       }
+
+      var parameters = GetMethodParameters(t, parents);
+      foreach (var (methodInfo, ps) in parameters) {
+        if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
+        if (CheckFIgnore(t, methodInfo.DeclaringType)) continue;
+
+        foreach (var p in ps) {
+          var isState = ImplementsOrDerives(p.ParameterType, typeof(IStateVal<>)) || ImplementsOrDerives(p.ParameterType, typeof(IStateRef<>));
+          if (isState) continue;
+
+          if (p.ParameterType.GetCustomAttribute<FIgnore>() != null) continue;
+
+          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), ApprovedDataFunc);
+          var isLogic = IsLogic($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), null, ApprovedDataFunc);
+          if (isData != "" && isLogic != "") return isData;
+        }
+      }
+
+      return "";
+    }
+
+    // wrapper around IsDataInternal that tries a cache hit if prefix starts with "_"
+    static string IsData(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
+      if (!prefix.StartsWith("_")) return IsDataInternal(prefix, t, parents, ApprovedDataFunc);
+
+      if (VerifiedData.TryGetValue(t, out var b)) return b ? "" : $"{t} not Data";
+      var isData = IsDataInternal(prefix, t, parents, ApprovedDataFunc);
+      VerifiedData = VerifiedData.SetItem(t, isData=="");
+      Debug.WriteLine($"|| IsData {t.FullName} {(isData == "" ? "True" : "False")}");
       return isData;
     }
 
-    static bool FcheckInternal(Type t, bool checkFIgnore, string prefix, bool assert, Func<Type, bool>? ApproveFunc) {
-      if (IsWhitelisted(t)) return true;
-      if (ApproveFunc is object && ApproveFunc(t)) return true;
-      if (t.IsEnum) return true;
+    static string IsDataInternal(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
+      if (IsWhitelistedData(t)) return "";
 
-      string fullName = (t.FullName ?? ""), baseFullName = (t.BaseType?.FullName ?? ""), ns = (t.Namespace ?? ""), name = (t.Name ?? ""), baseName = (t.BaseType?.Name ?? "");
+      if (ApprovedDataFunc is object && ApprovedDataFunc(t)) return "";
+
+      if (t.IsEnum) return "";
+
+      string fullName = t.FullName ?? "", baseFullName = t.BaseType?.FullName ?? "", ns = t.Namespace ?? "", name = t.Name ?? "", baseName = t.BaseType?.Name ?? "";
+
+      if (IsCompilerGenerated(t)) return "";
+
       var isAnonymous = name.Contains("AnonymousType");
+      if (isAnonymous) return "";
+
       var isAttribute = t.BaseType == typeof(Attribute);
-      var isCompilerGenerated = Attribute.GetCustomAttribute(t, typeof(CompilerGeneratedAttribute)) is object;
-      if (fullName.Contains("__")) isCompilerGenerated = true;
-      if (t.IsInterface || isAnonymous || isAttribute || isCompilerGenerated) return true;
+      if (isAttribute) return "";
 
-      if (checkFIgnore && t.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) return true;
+      if (t.GetCustomAttribute<FIgnore>()!=null) {
+        //Debug.WriteLine($"|| FIgnore: {DbgString(t, parents)}");
+        return "";
+      }
 
-      //Debug.WriteLine($"Fcheck({t.Name}, {checkFIgnore}, {prefix}, {assert})");
-
-      /* // check that all generic arguments are Data ???
-      var genericArgs = t.GetGenericArguments().ToList();
-      if (t.BaseType is object) genericArgs.AddRange(t.BaseType.GetGenericArguments());
-      foreach (var gat in genericArgs) {
-        if (gat == t) continue;
-        if (gat.FullName is null) continue;
-        if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
-        if (!Fcheck(gat, false, $"{t.Name} generic argument ", assert, ApproveFunc)) return false;
-      } */
-
-      // check for State
-      if (ns == "F" && (t.ImplementsOrDerives(typeof(IStateVal<>)) || t.ImplementsOrDerives(typeof(IStateRef<>)) || t.ImplementsOrDerives(typeof(State<>.Combine<>)))) return true;
+      if (t.IsClass) {
+        var isRecord = t.GetMethod("<Clone>$") is not null;
+        if (!isRecord) return $"{prefix} cannot be a class";
+      }
 
       // special treatment for SetBase, composed must pass Fcheck
       if (ImplementsOrDerives(t, typeof(SetBase<,>))) {
         var args = t.BaseType?.GetGenericArguments()!;
-        if (args.Length != 2 || args[1].FullName is null) return true;
-        return Fcheck(args[1], false, $"{t.Name} generic argument ", assert, ApproveFunc);
+        if (args.Length != 2 || args[1].FullName is null) return "";
+        if (args[1].GetCustomAttribute<FIgnore>() != null) return "";
+        return IsData($"{prefix}:{args[1].Name}", args[1], parents.Add(t), ApprovedDataFunc);
       }
 
       // special treatment for MapBase, composed must pass Fcheck
       if (ImplementsOrDerives(t, typeof(MapBase<,,>))) {
         var args = t.BaseType?.GetGenericArguments()!;
-        if (args.Length != 3 || args[1].FullName is null) return true;
-        return Fcheck(args[1], false, $"{t.Name} generic argument ", assert, ApproveFunc);
+        if (args.Length != 3 || args[1].FullName is null) return "";
+        if (args[1].GetCustomAttribute<FIgnore>() != null) return "";
+        return IsData($"{prefix}:{args[1].Name}", args[1], parents.Add(t), ApprovedDataFunc);
       }
 
-      var members = GetMembers(t, true, true, checkFIgnore ? typeof(FIgnore) : null);
+      if (ns == "F.State") return $"{prefix} cannot be a State";
+
+      var fieldsAndProperties = GetFieldsAndProperties(t)
+        .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
+        .Where(vt => vt.memberType!=t && !parents.Contains(vt.memberInfo)) // avoid recursion
+        .Where(vt => !IsConst(vt.memberInfo)) // ignore consts
+        .ToImmutableHashSet();
+
+      var methodParameters = GetMethodParameters(t, parents);
 
       // allow classes with no members (ie attributes)
-      if (members.IsEmpty) return true;
+      if (fieldsAndProperties.IsEmpty && methodParameters.IsEmpty) return "";
 
-      //if (t.IsGenericType || t.IsGenericTypeParameter) return true;
+      //var isNullable = Nullable.GetUnderlyingType(t) != null;
 
-      // allow modules - records that contain only private IState members
-      if (members.Any(vt => ImplementsOrDerives(vt.Item1, typeof(IStateVal<>)) || ImplementsOrDerives(vt.Item1, typeof(IStateRef<>)))) {
-        foreach (var (memberType, memberInfo) in members) {
-          if (IsMemberStatic(memberInfo)) continue; // allow static members in modules
-          if (IsMemeberPublic(memberInfo)) throw new($"module {t.Name} member {memberInfo.Name} cannot be public");
-          if (!ImplementsOrDerives(memberType, typeof(IStateVal<>)) && !ImplementsOrDerives(memberType, typeof(IStateRef<>))) throw new($"module {t.Name} member {memberInfo.Name} must be an IState");
-        }
-        return true;
-      }
-
-      var isStruct = t.IsValueType && !t.IsEnum;
-      var isStaticClass = t.IsClass && t.IsSealed && t.IsAbstract;
-
-      if (!isStruct && !isStaticClass && !t.IsEnum)
-      {
-        // type must implement IEquatable<T> - value semantics
-        if (!t.GetInterfaces().Any(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IEquatable<>)))
-        {
-          if (assert) throw new($"{prefix}{t.FullName ?? t.Name} not inherting IEquatable<T>");
-          return false;
-        }
-
-        // type must implement == and !=
-        var operators = t.GetMethods().Where(methodInfo => methodInfo.IsSpecialName).Select(methodInfo => methodInfo.Name);
-        if (!operators.Contains("op_Equality"))
-        {
-          if (assert) throw new($"{prefix}{t.FullName ?? t.Name} does not implement operator==");
-          return false;
-        }
-        if (!operators.Contains("op_Inequality"))
-        {
-          if (assert) throw new($"{prefix}{t.FullName ?? t.Name} does not implement operator!=");
-          return false;
-        }
-      }
-
-      foreach (var (memberType, memberInfo) in members) {
-        // process [FIgnore] fields 
-        if (memberInfo.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) {
-          var isPublic = memberInfo.MemberType switch {
-            MemberTypes.Field => ((FieldInfo)memberInfo).IsPublic,
-            MemberTypes.Property => ((PropertyInfo)memberInfo).GetAccessors().Any(MethodInfo => MethodInfo.IsPublic),
-            _ => false
-          };
-
-          /*if (isPublic) {
-            if (assert) throw new($"[FIgnore] on public {t.Name}.{memberInfo.Name}");
-            return false;
-          }*/
-
-          continue;
-        }
-
-        // ignore the type that is currently checked to avoid recursion
-        if (memberType == t) continue;
-
-        if (memberInfo.Name == "EqualityContract") continue;
-        if (memberType.IsEnum) continue;
-
+      foreach (var (memberType, memberInfo) in fieldsAndProperties) {
         // check member is read only
-        if (IsWhitelisted(memberType) && !IsReadonlyAfterInit(memberInfo)) {
-          if (assert) throw new($"{t.Name}.{memberInfo.Name} is not read only");
-          return false;
-        }
+        if (IsWhitelistedData(memberType) && !IsReadonlyAfterInit(memberInfo)) return $"{prefix}.{memberInfo.Name} not read only";
+        if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
+        if (CheckFIgnore(t, memberInfo.DeclaringType)) continue;
 
-        if (!Fcheck(memberType, false, $"{t.Name}. ", assert, ApproveFunc)) return false;
+        var isData = IsData($"{prefix}.{memberInfo.Name}", memberType, parents.Add(t), ApprovedDataFunc);
+        if (isData != "") return isData;
       }
-      return true;
+
+      foreach (var (methodInfo, ps) in methodParameters) {
+        if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
+        if (CheckFIgnore(t, methodInfo.DeclaringType)) continue;
+
+        foreach(var p in ps) {
+          if (p.ParameterType.GetCustomAttribute<FIgnore>() != null) continue;
+          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), ApprovedDataFunc);
+          if (isData != "") return isData;
+        }
+      }
+
+      return "";
     }
 
-    static bool IsWhitelisted(Type t_) {
+    static string ExpandTypeName(Type t) {
+      return !t.IsGenericType || t.IsGenericTypeDefinition
+        ? !t.IsGenericTypeDefinition ? t.Name : (t.Name.Contains('`') ? t.Name.Remove(t.Name.IndexOf('`')) : t.Name)
+        : $"{ExpandTypeName(t.GetGenericTypeDefinition())}<{string.Join(',', t.GetGenericArguments().Select(ExpandTypeName))}>";
+    }
+
+    static string DbgString(Type t, ImmutableList<Type> parents) {
+      if (parents.IsEmpty) return ExpandTypeName(t);
+      var parentsStr = string.Join('|', parents.Select(t => ExpandTypeName(t)));
+      return $"({parentsStr}) member {ExpandTypeName(t)}";
+    }
+
+    static bool CheckFIgnore(Type? t, Type? declaringType) {
+      if (t == null) return false;
+      if (t.GetCustomAttribute<FIgnore>() != null) return true;
+      if (declaringType == null || declaringType == t) return false;
+      if (declaringType.GetCustomAttribute<FIgnore>() != null) return true;
+      return false;
+    }
+
+    static bool IsConst(MemberInfo mi) => mi.MemberType == MemberTypes.Field && ((FieldInfo)mi).IsLiteral;
+
+    static bool IsWhitelistedData(Type t_) {
       var basic = new Type[] {
       typeof(byte), typeof(sbyte), typeof(short), typeof(int), typeof(long), typeof(ushort), typeof(uint), typeof(ulong),
       typeof(char), typeof(float), typeof(double), typeof(decimal), typeof(bool), typeof(string), typeof(DBNull), typeof(Uri), 
@@ -192,51 +263,61 @@ namespace F {
       return false;
     }
 
-    static ImmutableList<(Type, MemberInfo)> GetMembers(Type? type, bool getStatic = true, bool getPrivate = true, Type? ignoreAttribute = null) {
-      var res = ImmutableList<(Type, MemberInfo)>.Empty;
-      if (type is null) return res;
+    static ImmutableHashSet<(Type, MemberInfo)> GetFieldsAndProperties(Type? type) {
+      if (type is null) return ImmutableHashSet<(Type, MemberInfo)>.Empty; ;
+
+      var bindingFlags = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
+
+      var res = type.GetMembers(bindingFlags)
+        .Where(mi => IsFieldOrProperty(mi) && !IsIgnored(mi) && !IsCompilerGenerated(mi))
+        .Where(mi => !mi.Name.Contains("EqualityContract"))
+        .Select(mi => (GetUnderlyingType(mi)!, mi))
+        .ToImmutableHashSet();
 
       // get base class members if any
-      if (!object.Equals(type.BaseType, typeof(Object))) res = res.AddRange(GetMembers(type.BaseType, getStatic, getPrivate, ignoreAttribute));
+      if (!Equals(type.BaseType, typeof(object))) res = res.Union(GetFieldsAndProperties(type.BaseType));
 
-      var bindingFlags = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public;
-      if (getStatic) bindingFlags |= BindingFlags.Static;
-      if (getPrivate) bindingFlags |= BindingFlags.NonPublic;
+      return res;
+    }
 
-      IEnumerable<MemberInfo> membersInfo = type.GetMembers(bindingFlags);
-      if (ignoreAttribute is object) membersInfo = membersInfo.Where(memberInfo => !memberInfo.GetCustomAttributes(false).Any(a => a.GetType() == ignoreAttribute));
-      // filter out fields which are backing for properties
-      membersInfo = membersInfo.Where(memberInfo => memberInfo is PropertyInfo || (memberInfo is FieldInfo && memberInfo.GetCustomAttribute<CompilerGeneratedAttribute>() == null));
+    static ImmutableDictionary<MethodBase, ImmutableHashSet<ParameterInfo>> GetMethodParameters(Type? type, ImmutableList<Type> parents) {
+      var res = ImmutableDictionary<MethodBase, ImmutableHashSet<ParameterInfo>>.Empty;
+      if (type is null) return res;
 
-      // filter out properties with no backing fields
-      membersInfo = membersInfo.Where(memberInfo => memberInfo is FieldInfo || (memberInfo is PropertyInfo propertyInfo && GetBackingField(propertyInfo).Item1 == true));
+      var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+        .Where(m => !m.IsSpecialName)
+        .Where(m => !m.Name.StartsWith('<'))
+        .Select(m => (MethodBase)m)
+        .ToImmutableList()
+        .AddRange(type.GetConstructors()) // can be unremarked when record ctors have CompilerGenerated
+        .Where(m => m.GetCustomAttribute<CompilerGeneratedAttribute>() == null);
 
-      foreach (var memberInfo in membersInfo) {
-        var memberType = memberInfo.MemberType switch {
-          MemberTypes.Field => ((FieldInfo)memberInfo).FieldType,
-          MemberTypes.Property => ((PropertyInfo)memberInfo).PropertyType,
-          //MemberTypes.Event => ((EventInfo)memberInfo).EventHandlerType,
-          //MemberTypes.Method => ((MethodInfo)memberInfo).ReturnType,
-          _ => null
-        };
-        if (memberType is null) continue;
+      foreach (var methodInfo in methods) {
+        var ps = methodInfo.GetParameters()
+          .ToImmutableList()
+          // .Add(methodInfo.ReturnParameter)
+          .Where(p => p.GetCustomAttribute<FIgnore>() == null)
+          .Where(p => !parents.Contains(p.ParameterType)) // ignore cyclic dependencies
+          .Where(p => !p.ParameterType.Equals(type)); // ignore self reference
 
-        res = res.Add((memberType, memberInfo));
+        res = res.Add(methodInfo, ps.ToImmutableHashSet());
       }
 
       return res;
     }
 
-    static (bool, FieldInfo) GetBackingField(PropertyInfo pi) {
-      if (pi is null) return default;
-      if (!pi.CanRead) return default;
-      var getMethod = pi.GetGetMethod(nonPublic: true);
-      if (getMethod is object && !getMethod.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true)) return default;
-      var backingField = pi.DeclaringType?.GetField($"<{pi.Name}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
-      if (backingField == null) return default;
-      if (!backingField.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true)) return default;
-      return (true, backingField);
-    }
+    static bool IsFieldOrProperty(MemberInfo mi) => GetUnderlyingType(mi) != null;
+
+    //static bool IsBackingField(MemberInfo mi) => mi is FieldInfo && mi.GetCustomAttribute<CompilerGeneratedAttribute>() == null;
+
+    static bool IsIgnored(MemberInfo mi) => mi.GetCustomAttribute<FIgnore>() != null;
+
+    static bool IsCompilerGenerated(MemberInfo mi) =>
+      mi.GetCustomAttribute<CompilerGeneratedAttribute>() != null
+      || (IsFieldOrProperty(mi) && (GetUnderlyingType(mi)!.Name.Contains("__") || GetUnderlyingType(mi)!.Name.Contains("<>c")));
+
+    static bool IsCompilerGenerated(Type t) =>
+      t.GetCustomAttribute<CompilerGeneratedAttribute>() != null|| t.Name.Contains("__") || t.Name.Contains("<>c");
 
     public static bool ImplementsOrDerives(this Type @this, Type from) {
       if (from is null) return false;
@@ -255,14 +336,6 @@ namespace F {
       return @this.BaseType?.ImplementsOrDerives(from) ?? false;
     }
 
-    public static bool IsMemberStatic(MemberInfo memberInfo) {
-      return memberInfo.MemberType switch {
-        MemberTypes.Field => ((FieldInfo)memberInfo).IsStatic,
-        MemberTypes.Property => ((PropertyInfo)memberInfo).GetAccessors(true)[0].IsStatic,
-        _ => false
-      };
-    }
-
     static bool IsMemeberPublic(MemberInfo memberInfo) {
       return memberInfo.MemberType switch {
         MemberTypes.Field => ((FieldInfo)memberInfo).IsPublic,
@@ -270,8 +343,47 @@ namespace F {
         _ => false
       };
     }
-  }
 
+    public static Type? GetUnderlyingType(MemberInfo member) {
+      return member.MemberType switch {
+        MemberTypes.Field => ((FieldInfo)member).FieldType,
+        MemberTypes.Property => ((PropertyInfo)member).PropertyType,
+        _ => null
+      };
+    }
+
+    //static bool IsPropertyWithBackingField(MemberInfo mi) => mi is PropertyInfo pi && GetBackingField(pi) is not null;
+
+    /* static FieldInfo? GetBackingField(PropertyInfo pi) {
+      if (pi is null) return null;
+      if (!pi.CanRead) return null;
+      var getMethod = pi.GetGetMethod(nonPublic: true);
+      if (getMethod is object && !getMethod.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true)) return null;
+      var backingField = pi.DeclaringType?.GetField($"<{pi.Name}>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic);
+      if (backingField == null) return null;
+      if (!backingField.IsDefined(typeof(CompilerGeneratedAttribute), inherit: true)) return null;
+      return backingField;
+    } */
+
+    /* public static bool IsMemberStatic(MemberInfo memberInfo) {
+      return memberInfo.MemberType switch {
+        MemberTypes.Field => ((FieldInfo)memberInfo).IsStatic,
+        MemberTypes.Property => ((PropertyInfo)memberInfo).GetAccessors(true)[0].IsStatic,
+        _ => false
+      };
+    } */
+
+    /* // check that all generic arguments are Data ???
+    var genericArgs = t.GetGenericArguments().ToList();
+    if (t.Bas eType is object) genericArgs.AddRange(t.BaseType.GetGenericArguments());
+    foreach (var gat in genericArgs) {
+      if (gat == t) continue;
+      if (gat.FullName is null) continue;
+      if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
+      if (!Fcheck(gat, false, $"{t.Name} generic argument ", assert, ApproveFunc)) return false;
+    } */
+  }
 }
+
 
 

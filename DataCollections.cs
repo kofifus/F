@@ -5,7 +5,6 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
-using F;
 using Newtonsoft.Json;
 using static F.Data;
 
@@ -13,14 +12,15 @@ using static F.Data;
 
 #nullable enable
 
-namespace F {
+namespace F.Collections {
 
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record LstBase<TDerived, T> : IEnumerable<T>, IEnumerable
     where TDerived : LstBase<TDerived, T>, new() {
 
-    [FIgnore] protected ImmutableList<T> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableList<T> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public LstBase() => Composed = ImmutableList<T>.Empty;
     public LstBase(params T?[] p) => Composed = ImmutableList<T>.Empty.AddRange(p.Where(x => x is object)!);
@@ -52,33 +52,33 @@ namespace F {
     public static TDerived operator -(LstBase<TDerived, T> o, IEnumerable<T> items) => o.RemoveRange(items);
     public static TDerived operator -(LstBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
 
-    // use this if T is a non-nullable reference type
+    // use this if T is a non-nullable reference type (ie a MyClass or string) (https://stackoverflow.com/questions/63857659/c-sharp-9-nullable-types-issues)
     public T? this[int index] { get {
         if (index < 0 || index >= Count) return default;
         try { return Composed[index]; } catch { return default; }
-      } }
+    } }
 
-    // use this if T is not a non-nullable reference type (ie long or Manager?)
+    // use this if T is a nullable reference type or value type (ie MyClass? or int)
     public bool TryGetValue(int index, [MaybeNullWhen(false)] out T value) {
       if (index < 0 || index >= Count) { value = default; return false; };
       try { value = Composed[index]; return true; } catch { value = default; return false; }
     }
 
-    // use this if T is a non-nullable reference type
+    // use this if T is a non-nullable reference type (ie a MyClass)
     public T? Find(Predicate<T> match) => Composed.Find(match);
 
-    // use this if T is nun a non-nullable reference type (ie long or Manager?)
-    public bool Find(Predicate<T> match, [MaybeNullWhen(false)] out T value) {
+    // use this if T a nullable reference type or primitive type (ie long or MyClass?)
+    public bool TryFind(Predicate<T> match, [MaybeNullWhen(false)] out T value) {
       var index = Composed.FindIndex(match);
       value = index > -1 ? Composed[index] : default;
       return index > -1;
     }
 
-    // use this if T is a non-nullable reference type
+    // use this if T is a non-nullable reference type (ie a MyClass)
     public T? FindLast(Predicate<T> match) => Composed.FindLast(match);
 
-    // use this if T is nut a non-nullable reference type (ie long or Manager?)
-    public bool FindLast(Predicate<T> match, [MaybeNullWhen(false)] out T value) {
+    // use this if T a nullable reference type or primitive type (ie long or MyClass?)
+    public bool TryFindLast(Predicate<T> match, [MaybeNullWhen(false)] out T value) {
       var index = Composed.FindLastIndex(match);
       value = index > -1 ? Composed[index] : default;
       return index > -1;
@@ -200,18 +200,19 @@ namespace F {
 
   public sealed record Lst<T> : LstBase<Lst<T>, T> {
     public Lst() : base() { }
-    public Lst(params T?[] p) : base(p) { }
-    public Lst(params IEnumerable<T>?[] ps) : base(ps) { }
+    public Lst([FIgnore] params T?[] p) : base(p) { }
+    public Lst([FIgnore] params IEnumerable<T>?[] ps) : base(ps) { }
   }
 
 
   // Base class for Set<T> and any user defined Set
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record SetBase<TDerived, T> : IEnumerable<T>, IEnumerable
     where TDerived : SetBase<TDerived, T>, new() {
 
-    [FIgnore] protected ImmutableHashSet<T> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableHashSet<T> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public SetBase() => Composed = ImmutableHashSet<T>.Empty;
     public SetBase(params T?[] p) => Composed = ImmutableHashSet<T>.Empty.Union(p.Where(t => t is object)!);
@@ -273,18 +274,19 @@ namespace F {
   // the default concrete SetBase
   public sealed record Set<T> : SetBase<Set<T>, T> {
     public Set() : base() { }
-    public Set(params T?[] p) : base(p) { }
-    public Set(params IEnumerable<T>?[] p) : base(p) { }
+    public Set([FIgnore] params T?[] p) : base(p) { }
+    public Set([FIgnore] params IEnumerable<T>?[] p) : base(p) { }
   }
 
 
   // Base class for Set<T> and any user defined Set
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record OrderedSetBase<TDerived, T> : IEnumerable<T>, IEnumerable
     where TDerived : OrderedSetBase<TDerived, T>, new() {
 
-    [FIgnore] protected ImmutableSortedSet<T> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableSortedSet<T> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public OrderedSetBase() => Composed = ImmutableSortedSet<T>.Empty;
     public OrderedSetBase(params T?[] p) => Composed = ImmutableSortedSet<T>.Empty.Union(p.Where(t => t is object)!);
@@ -347,29 +349,31 @@ namespace F {
   // the default concrete OrderedSetBase
   public sealed record OrderedSet<T> : OrderedSetBase<OrderedSet<T>, T> {
     public OrderedSet() : base() { }
-    public OrderedSet(params T?[] p) : base(p) { }
-    public OrderedSet(params IEnumerable<T>?[] p) : base(p) { }
+    public OrderedSet([FIgnore] params T?[] p) : base(p) { }
+    public OrderedSet([FIgnore] params IEnumerable<T>?[] p) : base(p) { }
   }
 
 
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
-  public abstract record MapBase<TDerived, TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable 
-    where TKey : notnull where TDerived : MapBase<TDerived, TKey, TValue>, new() {
+  public abstract record MapBase<TDerived, TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable
+    where TKey : notnull
+    where TDerived : MapBase<TDerived, TKey, TValue>, new() {
 
-    [FIgnore] protected ImmutableDictionary<TKey, TValue> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableDictionary<TKey, TValue> Composed { get; init; }
+    protected HashCode? HashCache;
 
-    public MapBase() => Composed = ImmutableDictionary<TKey, TValue>.Empty; 
-    public MapBase(TKey key, TValue val) => Composed = ImmutableDictionary<TKey, TValue>.Empty.Add(key, val); 
-    public MapBase(params (TKey key, TValue val)?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)); 
-    public MapBase(params IEnumerable<(TKey key, TValue val)>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val)))); 
-    public MapBase(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.AddRange(p)); 
+    public MapBase() => Composed = ImmutableDictionary<TKey, TValue>.Empty;
+    public MapBase(TKey key, TValue val) => Composed = ImmutableDictionary<TKey, TValue>.Empty.Add(key, val);
+    public MapBase(params (TKey key, TValue val)?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val));
+    public MapBase(params IEnumerable<(TKey key, TValue val)>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItems(p.Select(x => new KeyValuePair<TKey, TValue>(x.key, x.val))));
+    public MapBase(params IEnumerable<KeyValuePair<TKey, TValue>>?[] ps) => Composed = ps.Aggregate(ImmutableDictionary<TKey, TValue>.Empty, (t, p) => p is null ? t : t.SetItems(p));
     protected MapBase(ImmutableDictionary<TKey, TValue> composed) => Composed = composed;
 
     protected static TDerived New(ImmutableDictionary<TKey, TValue> p) => new() { Composed = p }; // also used for json deserialization
     static TDerived New(IEnumerable<(TKey key, TValue val)> p) => new() { Composed = p.ToImmutableDictionary(t => t.key, t => t.val) };
 
-    public sealed override string ToString() => ToString(','); 
+    public sealed override string ToString() => ToString(',');
     public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
 
     public virtual bool Equals(MapBase<TDerived, TKey, TValue>? obj) {
@@ -391,18 +395,23 @@ namespace F {
 
     public TDerived Remove(Func<TKey, TValue, bool> match) {
       bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
-      if (match is null) throw new ArgumentNullException(nameof(match));
-      return New(this.Where(kv => !pred(kv)));
+      return match is null ? throw new ArgumentNullException(nameof(match)) : New(this.Where(kv => !pred(kv)));
     }
 
     public static TDerived operator +(MapBase<TDerived, TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
     public static TDerived operator +(MapBase<TDerived, TKey, TValue> o, IEnumerable<(TKey key, TValue val)> pairs) => o.SetItems(pairs);
     public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, TKey key) => o.Remove(key);
     public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, Set<TKey> keys) => New(o.Composed.RemoveRange(keys));
+    public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, IEnumerable<TKey> keys) => New(o.Composed.RemoveRange(keys));
     public static TDerived operator -(MapBase<TDerived, TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
 
-    // use this if T is a non-nullable reference type
+    // use this if T is a non-nullable reference type (ie a MyClass or string) (https://stackoverflow.com/questions/63857659/c-sharp-9-nullable-types-issues)
     public TValue? this[TKey key] => Composed.TryGetValue(key, out var value) ? value : default;
+
+    // use this if T is a nullable reference type or value type (ie MyClass? or int)
+    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
+
+    public bool TryGetKey(TKey equalKey, [MaybeNullWhen(false)] out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
 
     public TDerived SetItems(params (TKey key, TValue val)?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)));
 
@@ -443,26 +452,25 @@ namespace F {
     public IEnumerator<(TKey, TValue)> GetEnumerator() => (this as IEnumerable<(TKey, TValue)>).GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
 
-    public bool TryGetKey(TKey equalKey, out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
-    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
   }
 
 
   public sealed record Map<TKey, TValue> : MapBase<Map<TKey, TValue>, TKey, TValue> where TKey : notnull {
     public Map() : base() { }
     public Map(TKey key, TValue val) : base(key, val) { }
-    public Map(params (TKey key, TValue val)?[] items) : base(items) { }
-    public Map(params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
-    public Map(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
+    public Map([FIgnore] params (TKey key, TValue val)?[] items) : base(items) { }
+    public Map([FIgnore] params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
+    public Map([FIgnore] params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
   }
 
 
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record OrderedMapBase<TDerived, TKey, TValue> : IEnumerable<(TKey, TValue)>, IEnumerable
     where TKey : notnull where TDerived : OrderedMapBase<TDerived, TKey, TValue>, new() {
 
-    [FIgnore] protected ImmutableSortedDictionary<TKey, TValue> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableSortedDictionary<TKey, TValue> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public OrderedMapBase() => Composed = ImmutableSortedDictionary<TKey, TValue>.Empty;
     public OrderedMapBase(TKey key, TValue val) => Composed = ImmutableSortedDictionary<TKey, TValue>.Empty.Add(key, val);
@@ -496,8 +504,7 @@ namespace F {
 
     public TDerived Remove(Func<TKey, TValue, bool> match) {
       bool pred((TKey, TValue) vt) => match(vt.Item1, vt.Item2);
-      if (match is null) throw new ArgumentNullException(nameof(match));
-      return New(this.Where(kv => !pred(kv)));
+      return match is null ? throw new ArgumentNullException(nameof(match)) : New(this.Where(kv => !pred(kv)));
     }
 
     public static TDerived operator +(OrderedMapBase<TDerived, TKey, TValue> o, (TKey key, TValue val) vt) => o.SetItem(vt.key, vt.val);
@@ -506,8 +513,14 @@ namespace F {
     public static TDerived operator -(OrderedMapBase<TDerived, TKey, TValue> o, Set<TKey> keys) => New(o.Composed.RemoveRange(keys));
     public static TDerived operator -(OrderedMapBase<TDerived, TKey, TValue> o, Func<TKey, TValue, bool> match) => o.Remove(match);
 
-    // use this if T is a non-nullable reference type
+    // use this if T is a non-nullable reference type (ie a MyClass or string) (https://stackoverflow.com/questions/63857659/c-sharp-9-nullable-types-issues)
     public TValue? this[TKey key] => Composed.TryGetValue(key, out var value) ? value : default;
+
+    // use this if T is a nullable reference type or value type (ie MyClass? or int)
+    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
+
+    public bool TryGetKey(TKey equalKey, [MaybeNullWhen(false)] out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
+
 
     public TDerived SetItems(params (TKey key, TValue val)?[] ps) => New(ps.Aggregate(Composed, (t, p) => p is null ? t : t.SetItem(p.Value.key, p.Value.val)));
 
@@ -548,28 +561,26 @@ namespace F {
     public IEnumerator<(TKey, TValue)> GetEnumerator() => (this as IEnumerable<(TKey, TValue)>).GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => (Composed as IEnumerable).GetEnumerator();
 
-    public bool TryGetKey(TKey equalKey, out TKey actualKey) => Composed.TryGetKey(equalKey, out actualKey);
-    public bool TryGetValue(TKey key, [MaybeNullWhen(false)] out TValue value) => Composed.TryGetValue(key, out value);
-
     public TDerived WithComparer(IComparer<TKey> comparers) => New(Composed.WithComparers(comparers));
   }
 
 
-  public sealed record SortedMap<TKey, TValue> : OrderedMapBase<SortedMap<TKey, TValue>, TKey, TValue> where TKey : notnull {
-    public SortedMap() : base() { }
-    public SortedMap(TKey key, TValue val) : base(key, val) { }
-    public SortedMap(params (TKey key, TValue val)?[] items) : base(items) { }
-    public SortedMap(params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
-    public SortedMap(params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
+  public sealed record OrderedMap<TKey, TValue> : OrderedMapBase<OrderedMap<TKey, TValue>, TKey, TValue> where TKey : notnull {
+    public OrderedMap() : base() { }
+    public OrderedMap(TKey key, TValue val) : base(key, val) { }
+    public OrderedMap([FIgnore] params (TKey key, TValue val)?[] items) : base(items) { }
+    public OrderedMap([FIgnore] params IEnumerable<(TKey key, TValue val)>?[] items) : base(items) { }
+    public OrderedMap([FIgnore] params IEnumerable<KeyValuePair<TKey, TValue>>?[] items) : base(items) { }
   }
 
 
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record QueBase<TDerived, T> : IEnumerable<T>, IEnumerable
     where TDerived : QueBase<TDerived, T>, new() {
 
-    [FIgnore] protected ImmutableQueue<T> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableQueue<T> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public QueBase() => Composed = ImmutableQueue<T>.Empty;
     public QueBase(params T?[] p) => Composed = p.Aggregate(ImmutableQueue<T>.Empty, (t, v) => v is null ? t : t.Enqueue(v));
@@ -593,12 +604,13 @@ namespace F {
 
     public static TDerived operator +(QueBase<TDerived, T> o, T v) => o.Enqueue(v);
 
+    // use this if T is a non-nullable reference type (ie a MyClass or string) (https://stackoverflow.com/questions/63857659/c-sharp-9-nullable-types-issues)
     public T? Peek() {
       if (IsEmpty) return default;
       try { return Composed.Peek(); } catch { return default; }
     }
 
-    // use this if T is nut a non-nullable reference type (ie long or Manager?)
+    // use this if T is a nullable reference type or value type (ie MyClass? or int)
     public bool TryPeek([MaybeNullWhen(false)] out T value) {
       if (IsEmpty) { value = default; return false; }
       try { value = Composed.Peek(); return true; } catch { value = default; return false; }
@@ -637,17 +649,18 @@ namespace F {
 
   public sealed record Que<T> : QueBase<Que<T>, T> {
     public Que() : base() { }
-    public Que(params T?[] p) : base(p) { }
-    public Que(params IEnumerable<T>?[] ps) : base(ps) { }
+    public Que([FIgnore] params T?[] p) : base(p) { }
+    public Que([FIgnore] params IEnumerable<T>?[] ps) : base(ps) { }
   }
 
 
+  [FIgnore]
   [JsonConverter(typeof(JsonFCollectionConverter))]
   public abstract record ArrBase<TDerived, T> : IEnumerable<T>, IEnumerable
     where TDerived : ArrBase<TDerived, T>, new() {
 
-    [FIgnore] protected ImmutableArray<T> Composed { get; init; }
-    [FIgnore] protected HashCode? HashCache;
+    protected ImmutableArray<T> Composed { get; init; }
+    protected HashCode? HashCache;
 
     public ArrBase() => Composed = ImmutableArray<T>.Empty; 
     public ArrBase(params T?[] p) => Composed = ImmutableArray<T>.Empty.AddRange(p.Where(x => x is object)!); 
@@ -675,12 +688,13 @@ namespace F {
     public static TDerived operator -(ArrBase<TDerived, T> o, IEnumerable<T> items) => o.RemoveRange(items);
     public static TDerived operator -(ArrBase<TDerived, T> o, Predicate<T> match) => o.RemoveAll(match);
 
+    // use this if T is a non-nullable reference type (ie a MyClass or string) (https://stackoverflow.com/questions/63857659/c-sharp-9-nullable-types-issues)
     public T? this[int index] { get {
         if (index < 0 || index >= Count) return default;
         try { return Composed[index]; } catch { return default; }
-      } }
+    } }
 
-    // use this if T is nut a non-nullable reference type (ie long or Manager?)
+    // use this if T is a nullable reference type or value type (ie MyClass? or int)
     public bool TryGetValue(int index, [MaybeNullWhen(false)] out T value) {
       if (index < 0 || index >= Count) { value = default; return false; }
       try { value = Composed[index]; return true; } catch { value = default; return false; }
@@ -797,11 +811,12 @@ namespace F {
 
   public sealed record Arr<T> : ArrBase<Arr<T>, T> {
     public Arr() : base() { }
-    public Arr(params T?[] p) : base(p) { }
-    public Arr(params IEnumerable<T>?[] ps) : base(ps) { }
+    public Arr([FIgnore] params T?[] p) : base(p) { }
+    public Arr([FIgnore] params IEnumerable<T>?[] ps) : base(ps) { }
   }
 
 
+  [FIgnore]
   class JsonFCollectionConverter : JsonConverter {
     static PropertyInfo GetCompositor(Type? t) {
       while (t != null) {
@@ -851,14 +866,25 @@ namespace F {
 }
 
 namespace System.Linq {
+using F.Collections;
+
   public static class CollectionsExtensionsMethods {
     public static Lst<T> ToLst<T>(this IEnumerable<T> source) => new(source);
+
     public static Set<T> ToSet<T>(this IEnumerable<T> source) => new(source);
+
     public static OrderedSet<T> ToOrderedSet<T>(this IEnumerable<T> source) => new(source);
+
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<(TKey key, TValue val)> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) where TKey : notnull => new(source);
     public static Map<TKey, TValue> ToMap<TKey, TValue, TSource>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TValue> valueSelector) where TKey : notnull => new(source.ToImmutableDictionary(keySelector, valueSelector));
+ 
+    public static OrderedMap<TKey, TValue> ToOrderedMap<TKey, TValue>(this IEnumerable<(TKey key, TValue val)> source) where TKey : notnull => new(source);
+    public static OrderedMap<TKey, TValue> ToOrderedMap<TKey, TValue>(this IEnumerable<KeyValuePair<TKey, TValue>> source) where TKey : notnull => new(source);
+    public static OrderedMap<TKey, TValue> ToOrderedMap<TKey, TValue, TSource>(this IEnumerable<TSource> source, Func<TSource, TKey> keySelector, Func<TSource, TValue> valueSelector) where TKey : notnull => new(source.ToImmutableDictionary(keySelector, valueSelector));
+
     public static Que<T> ToQue<T>(this IEnumerable<T> source) => new(source);
+
     public static Arr<T> ToArr<T>(this IEnumerable<T> source) => new(source);
   }
 }
