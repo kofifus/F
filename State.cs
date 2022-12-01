@@ -1,5 +1,4 @@
-﻿
-// https://github.com/kofifus/F/wiki
+﻿// https://github.com/kofifus/F/wiki
 
 #nullable enable
 

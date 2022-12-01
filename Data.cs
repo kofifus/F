@@ -1,14 +1,14 @@
-﻿using System;
+﻿// https://github.com/kofifus/F/wiki
+
+#nullable enable
+
+using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-
-// https://github.com/kofifus/F/wiki
-
-#nullable enable
 
 namespace F {
   using F.Collections;
@@ -39,6 +39,8 @@ namespace F {
 
       foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) {
         if (IgnoreFunc(t)) continue;
+        if (t.GetCustomAttribute<FIgnore>() != null) continue;
+
         var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, null, ApprovedDataFunc);
         if (isLogic == "") continue;
         var isData = IsData($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
@@ -49,6 +51,9 @@ namespace F {
         isData = IsData(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
         throw new($"Invalid type {ExpandTypeName(t)}:\nNot Data: {isData}\nNot Logic: {isLogic}");
       }
+
+      VerifiedLogic = ImmutableDictionary<Type, bool>.Empty;
+      VerifiedData = ImmutableDictionary<Type, bool>.Empty;
 #endif
     }
 
@@ -74,7 +79,6 @@ namespace F {
 
       foreach (var (memberType, memberInfo) in members) {
         if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
-        if (CheckFIgnore(t, memberInfo.DeclaringType)) continue;
 
         if (memberType.IsPrimitive) return $"{prefix}.{memberInfo.Name} cannot be a basic type";
 
@@ -98,7 +102,6 @@ namespace F {
       var parameters = GetMethodParameters(t, parents);
       foreach (var (methodInfo, ps) in parameters) {
         if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
-        if (CheckFIgnore(t, methodInfo.DeclaringType)) continue;
 
         foreach (var p in ps) {
           var isState = ImplementsOrDerives(p.ParameterType, typeof(IStateVal<>)) || ImplementsOrDerives(p.ParameterType, typeof(IStateRef<>));
@@ -128,14 +131,15 @@ namespace F {
 
     static string IsDataInternal(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
       if (IsWhitelistedData(t)) return "";
-
       if (ApprovedDataFunc is object && ApprovedDataFunc(t)) return "";
+      if (t.GetCustomAttribute<FIgnore>() != null) return "";
 
       if (t.IsEnum) return "";
 
       string fullName = t.FullName ?? "", baseFullName = t.BaseType?.FullName ?? "", ns = t.Namespace ?? "", name = t.Name ?? "", baseName = t.BaseType?.Name ?? "";
 
       if (IsCompilerGenerated(t)) return "";
+      if (ns== "F.Collections") return "";
 
       var isAnonymous = name.Contains("AnonymousType");
       if (isAnonymous) return "";
@@ -143,33 +147,12 @@ namespace F {
       var isAttribute = t.BaseType == typeof(Attribute);
       if (isAttribute) return "";
 
-      if (t.GetCustomAttribute<FIgnore>()!=null) {
-        //Debug.WriteLine($"|| FIgnore: {DbgString(t, parents)}");
-        return "";
-      }
+      if (ns == "F.State") return $"{prefix} cannot be a State";
 
       if (t.IsClass) {
         var isRecord = t.GetMethod("<Clone>$") is not null;
         if (!isRecord) return $"{prefix} cannot be a class";
       }
-
-      // special treatment for SetBase, composed must pass Fcheck
-      if (ImplementsOrDerives(t, typeof(SetBase<,>))) {
-        var args = t.BaseType?.GetGenericArguments()!;
-        if (args.Length != 2 || args[1].FullName is null) return "";
-        if (args[1].GetCustomAttribute<FIgnore>() != null) return "";
-        return IsData($"{prefix}:{args[1].Name}", args[1], parents.Add(t), ApprovedDataFunc);
-      }
-
-      // special treatment for MapBase, composed must pass Fcheck
-      if (ImplementsOrDerives(t, typeof(MapBase<,,>))) {
-        var args = t.BaseType?.GetGenericArguments()!;
-        if (args.Length != 3 || args[1].FullName is null) return "";
-        if (args[1].GetCustomAttribute<FIgnore>() != null) return "";
-        return IsData($"{prefix}:{args[1].Name}", args[1], parents.Add(t), ApprovedDataFunc);
-      }
-
-      if (ns == "F.State") return $"{prefix} cannot be a State";
 
       var fieldsAndProperties = GetFieldsAndProperties(t)
         .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
@@ -185,10 +168,8 @@ namespace F {
       //var isNullable = Nullable.GetUnderlyingType(t) != null;
 
       foreach (var (memberType, memberInfo) in fieldsAndProperties) {
-        // check member is read only
-        if (IsWhitelistedData(memberType) && !IsReadonlyAfterInit(memberInfo)) return $"{prefix}.{memberInfo.Name} not read only";
         if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
-        if (CheckFIgnore(t, memberInfo.DeclaringType)) continue;
+        if ((memberInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
 
         var isData = IsData($"{prefix}.{memberInfo.Name}", memberType, parents.Add(t), ApprovedDataFunc);
         if (isData != "") return isData;
@@ -196,11 +177,13 @@ namespace F {
 
       foreach (var (methodInfo, ps) in methodParameters) {
         if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
-        if (CheckFIgnore(t, methodInfo.DeclaringType)) continue;
+        if ((methodInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
 
-        foreach(var p in ps) {
-          if (p.ParameterType.GetCustomAttribute<FIgnore>() != null) continue;
-          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), ApprovedDataFunc);
+        foreach (var p in ps) {
+          var pt = p.ParameterType;
+          if (IsParams(p)) pt = pt.GetElementType() ?? pt;
+          if (pt.GetCustomAttribute<FIgnore>() != null) continue;
+          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", pt, parents.Add(t), ApprovedDataFunc);
           if (isData != "") return isData;
         }
       }
@@ -212,20 +195,6 @@ namespace F {
       return !t.IsGenericType || t.IsGenericTypeDefinition
         ? !t.IsGenericTypeDefinition ? t.Name : (t.Name.Contains('`') ? t.Name.Remove(t.Name.IndexOf('`')) : t.Name)
         : $"{ExpandTypeName(t.GetGenericTypeDefinition())}<{string.Join(',', t.GetGenericArguments().Select(ExpandTypeName))}>";
-    }
-
-    static string DbgString(Type t, ImmutableList<Type> parents) {
-      if (parents.IsEmpty) return ExpandTypeName(t);
-      var parentsStr = string.Join('|', parents.Select(t => ExpandTypeName(t)));
-      return $"({parentsStr}) member {ExpandTypeName(t)}";
-    }
-
-    static bool CheckFIgnore(Type? t, Type? declaringType) {
-      if (t == null) return false;
-      if (t.GetCustomAttribute<FIgnore>() != null) return true;
-      if (declaringType == null || declaringType == t) return false;
-      if (declaringType.GetCustomAttribute<FIgnore>() != null) return true;
-      return false;
     }
 
     static bool IsConst(MemberInfo mi) => mi.MemberType == MemberTypes.Field && ((FieldInfo)mi).IsLiteral;
@@ -246,20 +215,6 @@ namespace F {
       if (typeof(ITuple).IsAssignableFrom(t)) return true; //Tuple
       if (typeof(Delegate).IsAssignableFrom(t)) return true; // Delegate
 
-      return false;
-    }
-
-    static bool IsReadonlyAfterInit(MemberInfo memberInfo) {
-      switch (memberInfo.MemberType) {
-        case MemberTypes.Field:
-          var fieldInfo = ((FieldInfo)memberInfo);
-          return fieldInfo.IsInitOnly || fieldInfo.IsLiteral;
-        case MemberTypes.Property:
-          var propertyInfo = (PropertyInfo)memberInfo;
-          if (!propertyInfo.CanWrite) return true;
-          var setMethodReturnParameterModifiers = propertyInfo.SetMethod?.ReturnParameter.GetRequiredCustomModifiers();
-          return setMethodReturnParameterModifiers?.Contains(typeof(IsExternalInit)) ?? false;
-      };
       return false;
     }
 
@@ -319,21 +274,21 @@ namespace F {
     static bool IsCompilerGenerated(Type t) =>
       t.GetCustomAttribute<CompilerGeneratedAttribute>() != null|| t.Name.Contains("__") || t.Name.Contains("<>c");
 
-    public static bool ImplementsOrDerives(this Type @this, Type from) {
+    static bool ImplementsOrDerives(this Type t, Type from) {
       if (from is null) return false;
-      if (!from.IsGenericType)  return from.IsAssignableFrom(@this);
-      if (!from.IsGenericTypeDefinition) return from.IsAssignableFrom(@this);
+      if (!from.IsGenericType)  return from.IsAssignableFrom(t);
+      if (!from.IsGenericTypeDefinition) return from.IsAssignableFrom(t);
       
       if (from.IsInterface) {
-        foreach (Type @interface in @this.GetInterfaces()) {
-          if (@interface.IsGenericType && @interface.GetGenericTypeDefinition() == from) {
+        foreach (Type tinterface in t.GetInterfaces()) {
+          if (tinterface.IsGenericType && tinterface.GetGenericTypeDefinition() == from) {
             return true;
           }
         }
       }
 
-      if (@this.IsGenericType && @this.GetGenericTypeDefinition() == from) return true;
-      return @this.BaseType?.ImplementsOrDerives(from) ?? false;
+      if (t.IsGenericType && t.GetGenericTypeDefinition() == from) return true;
+      return t.BaseType?.ImplementsOrDerives(from) ?? false;
     }
 
     static bool IsMemeberPublic(MemberInfo memberInfo) {
@@ -344,12 +299,16 @@ namespace F {
       };
     }
 
-    public static Type? GetUnderlyingType(MemberInfo member) {
+    static Type? GetUnderlyingType(MemberInfo member) {
       return member.MemberType switch {
         MemberTypes.Field => ((FieldInfo)member).FieldType,
         MemberTypes.Property => ((PropertyInfo)member).PropertyType,
         _ => null
       };
+    }
+
+    static bool IsParams(ParameterInfo param) {
+      return param.IsDefined(typeof(ParamArrayAttribute), false);
     }
 
     //static bool IsPropertyWithBackingField(MemberInfo mi) => mi is PropertyInfo pi && GetBackingField(pi) is not null;
@@ -381,7 +340,24 @@ namespace F {
       if (gat.FullName is null) continue;
       if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
       if (!Fcheck(gat, false, $"{t.Name} generic argument ", assert, ApproveFunc)) return false;
-    } */
+    }
+
+    static bool IsReadonlyAfterInit(MemberInfo memberInfo) {
+      switch (memberInfo.MemberType) {
+        case MemberTypes.Field:
+          var fieldInfo = ((FieldInfo)memberInfo);
+          return fieldInfo.IsInitOnly || fieldInfo.IsLiteral;
+        case MemberTypes.Property:
+          var propertyInfo = (PropertyInfo)memberInfo;
+          if (!propertyInfo.CanWrite) return true;
+          var setMethodReturnParameterModifiers = propertyInfo.SetMethod?.ReturnParameter.GetRequiredCustomModifiers();
+          return setMethodReturnParameterModifiers?.Contains(typeof(IsExternalInit)) ?? false;
+      };
+      return false;
+    }
+
+    
+     */
   }
 }
 
