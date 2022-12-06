@@ -161,7 +161,6 @@ namespace F.State {
     }
   }
 
-
   // simplest state implementation, does nothing
   public class SimpleState<T> : State<T> {
     public SimpleState(T value) : base(value) { }
@@ -180,7 +179,6 @@ namespace F.State {
 
   }
 
-  // lock during Ref around T1 then around T2
   public class LockedState<T1, T2> : State<T1>.Combine<T2> {
     public LockedState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
   }
@@ -209,9 +207,12 @@ namespace F.State {
     }
   }
 
+  public class JournalLockedState<T1, T2> : State<T1>.Combine<T2> {
+    public JournalLockedState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
+  }
 
   // allow registering events that get invoked before/after a Ref
-    public class ObserverState<T> : State<T> {
+  public class ObserverState<T> : State<T> {
     public record OserverStatePreEventArgs(T PreVal);
     public record OserverStatePostEventArgs(T PreVal, T PostVal);
 
@@ -223,4 +224,9 @@ namespace F.State {
     override protected object? PreRef(in T preVal) { PreEvent?.Invoke(this, new(preVal)); return null; }
     override protected void PostRef(in T preVal, in T postVal, object? _) => PostEvent?.Invoke(this, new(preVal, postVal));
   }
+
+  public class ObserverState<T1, T2> : State<T1>.Combine<T2> {
+    public ObserverState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
+  }
+
 }
