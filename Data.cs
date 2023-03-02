@@ -87,7 +87,7 @@ namespace F {
           if (isRecord) return $"{prefix} cannot be a record";
         }
 
-        var isState = ImplementsOrDerives(memberType, typeof(IStateVal<>)) || ImplementsOrDerives(memberType, typeof(IStateRef<>));
+        var isState = ImplementsOrDerives(memberType, typeof(IReadOnlyState<>)) || ImplementsOrDerives(memberType, typeof(IState<>));
         if (isState) {
           var isPublic = IsMemeberPublic(memberInfo);
           if (isPublic) return $"{prefix}.{memberInfo.Name} cannot be a pubic State";
@@ -104,7 +104,7 @@ namespace F {
         if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
 
         foreach (var p in ps) {
-          var isState = ImplementsOrDerives(p.ParameterType, typeof(IStateVal<>)) || ImplementsOrDerives(p.ParameterType, typeof(IStateRef<>));
+          var isState = ImplementsOrDerives(p.ParameterType, typeof(IReadOnlyState<>)) || ImplementsOrDerives(p.ParameterType, typeof(IState<>));
           if (isState) continue;
 
           if (p.ParameterType.GetCustomAttribute<FIgnore>() != null) continue;
@@ -154,6 +154,17 @@ namespace F {
         if (!isRecord) return $"{prefix} cannot be a class";
       }
 
+      // check that all generic arguments are Data
+      var genericArgs = t.GetGenericArguments().ToList();
+      if (t.BaseType is object) genericArgs.AddRange(t.BaseType.GetGenericArguments());
+      foreach (var gat in genericArgs) {
+        if (gat == t) continue;
+        if (gat.FullName is null) continue;
+        if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
+        var isData = IsData($"{prefix}<{gat.FullName}>", gat, parents.Add(t), ApprovedDataFunc);
+        if (isData != "") return isData;
+      }
+
       var fieldsAndProperties = GetFieldsAndProperties(t)
         .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
         .Where(vt => vt.memberType!=t && !parents.Contains(vt.memberInfo)) // avoid recursion
@@ -180,8 +191,7 @@ namespace F {
         if ((methodInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
 
         foreach (var p in ps) {
-          var pt = p.ParameterType;
-          if (IsParams(p)) pt = pt.GetElementType() ?? pt;
+          var pt = p.ParameterType.GetElementType() ?? p.ParameterType;
           if (pt.GetCustomAttribute<FIgnore>() != null) continue;
           var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", pt, parents.Add(t), ApprovedDataFunc);
           if (isData != "") return isData;
@@ -278,7 +288,7 @@ namespace F {
       if (from is null) return false;
       if (!from.IsGenericType)  return from.IsAssignableFrom(t);
       if (!from.IsGenericTypeDefinition) return from.IsAssignableFrom(t);
-      
+
       if (from.IsInterface) {
         foreach (Type tinterface in t.GetInterfaces()) {
           if (tinterface.IsGenericType && tinterface.GetGenericTypeDefinition() == from) {
@@ -307,13 +317,14 @@ namespace F {
       };
     }
 
+    /*
     static bool IsParams(ParameterInfo param) {
       return param.IsDefined(typeof(ParamArrayAttribute), false);
     }
 
-    //static bool IsPropertyWithBackingField(MemberInfo mi) => mi is PropertyInfo pi && GetBackingField(pi) is not null;
+    static bool IsPropertyWithBackingField(MemberInfo mi) => mi is PropertyInfo pi && GetBackingField(pi) is not null;
 
-    /* static FieldInfo? GetBackingField(PropertyInfo pi) {
+    static FieldInfo? GetBackingField(PropertyInfo pi) {
       if (pi is null) return null;
       if (!pi.CanRead) return null;
       var getMethod = pi.GetGetMethod(nonPublic: true);
@@ -356,8 +367,8 @@ namespace F {
       return false;
     }
 
-    
-     */
+
+      */
   }
 }
 

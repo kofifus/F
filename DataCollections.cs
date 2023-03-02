@@ -28,11 +28,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableList<T> v) => new() { Composed = v }; // also used for json deserialization
     static TDerived New(IEnumerable<T> v) => new() { Composed = v.ToImmutableList() };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) {
-      var index = 0;
-      return Composed.Aggregate("", (total, next) => $"{total}{(index++ == 0 ? "" : separator)}{next?.ToString() ?? ""}");
-    }
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(LstBase<TDerived, T>? obj) => obj is object && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
 
@@ -202,8 +200,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableHashSet<T> v) => new() { Composed = v }; // also used for json deserialization
     static TDerived New(IEnumerable<T> v) => new() { Composed = v.ToImmutableHashSet() };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(SetBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(obj.Composed);
 
@@ -285,8 +284,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableSortedSet<T> p) => new() { Composed = p }; // also used for json deserialization
     static TDerived New(IEnumerable<T> p) => new() { Composed = p.ToImmutableSortedSet() };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(OrderedSetBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SetEquals(obj.Composed);
 
@@ -370,8 +370,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableDictionary<TKey, TValue> v) => new() { Composed = v }; // also used for json deserialization
     static TDerived New(IEnumerable<(TKey key, TValue val)> v) => new() { Composed = v.ToImmutableDictionary(t => t.key, t => t.val) };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" +  string.Join(separator, Composed.Select(vt => $"({vt.Key}, {vt.Value?.ToString() ?? "null"})"))+"}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(MapBase<TDerived, TKey, TValue>? obj) {
       if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
@@ -474,8 +475,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableSortedDictionary<TKey, TValue> p) => new() { Composed = p }; // also used for json deserialization
     static TDerived New(IEnumerable<(TKey key, TValue val)> p) => new() { Composed = p.ToImmutableSortedDictionary(t => t.key, t => t.val) };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{{{next.Key?.ToString() ?? ""},{next.Value?.ToString() ?? ""}}}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed.Select(vt => $"({vt.Key}, {vt.Value?.ToString() ?? "null"})")) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(OrderedMapBase<TDerived, TKey, TValue>? obj) {
       if (obj is null || Count != obj.Count || GetHashCode() != obj.GetHashCode()) return false;
@@ -579,8 +581,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableQueue<T> v) => new() { Composed = v }; // also used for json deserialization
     //static TDerived New(IEnumerable<T> v) => new() { Composed = v.Aggregate(ImmutableQueue<T>.Empty, (t, v) => v is null ? t : t.Enqueue(v)) };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(QueBase<TDerived, T>? obj) => obj is not null && Count==obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(((QueBase<TDerived, T>)obj).Composed);
     override public int GetHashCode() {
@@ -643,8 +646,9 @@ namespace F.Collections {
     public static TDerived New(ImmutableArray<T> p) => new() { Composed = p }; // also used for json deserialization
     static TDerived New(IEnumerable<T> p) => new() { Composed = p.ToImmutableArray() };
 
-    public sealed override string ToString() => ToString(',');
-    public string ToString(char separator) => Composed.IsEmpty ? "" : Composed.Aggregate("", (total, next) => $"{total}{(total == "" ? "" : separator)}{next?.ToString() ?? ""}");
+    public sealed override string ToString() => ToString(", ");
+    public string ToString(string separator) => "{" + string.Join(separator, Composed) + "}";
+    public string ToString(char separator) => ToString(separator.ToString());
 
     public virtual bool Equals(ArrBase<TDerived, T>? obj) => obj is not null && Count == obj.Count && GetHashCode() == obj.GetHashCode() && Composed.SequenceEqual(obj.Composed);
     override public int GetHashCode() {
@@ -799,8 +803,7 @@ namespace F.Collections {
       if (reader.TokenType == JsonToken.Null) return null;
       var compositor = GetCompositor(objectType);
       var compositorType = compositor.PropertyType;
-      var compositorValue = serializer.Deserialize(reader, compositorType);
-      if (compositorValue is null) throw new JsonSerializationException();
+      var compositorValue = serializer.Deserialize(reader, compositorType) ?? throw new JsonSerializationException();
       try {
         return Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { compositorValue }, null); // try ctor
       }
