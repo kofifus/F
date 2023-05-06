@@ -17,11 +17,9 @@ namespace F {
   [FIgnore]
   public static class Validator {
 
-    // FIgnore excludes the class/field/property from checking 
     [AttributeUsage(AttributeTargets.All, AllowMultiple = false, Inherited = false)]
     public sealed class FIgnore : Attribute { }
 
-    [FIgnore]
     static ImmutableDictionary<Type,bool> VerifiedLogic = ImmutableDictionary<Type, bool>.Empty;
     static ImmutableDictionary<Type,bool> VerifiedData = ImmutableDictionary<Type, bool>.Empty;
 
@@ -41,13 +39,13 @@ namespace F {
         if (IgnoreFunc(t)) continue;
         if (t.GetCustomAttribute<FIgnore>() != null) continue;
 
-        var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, null, ApprovedDataFunc);
+        var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
         if (isLogic == "") continue;
         var isData = IsData($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
         if (isData == "") continue;
 
         // we now call again to retrieve the correct message
-        isLogic = IsLogic(t.Name, t, ImmutableList<Type>.Empty, null, ApprovedDataFunc);
+        isLogic = IsLogic(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
         isData = IsData(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
         throw new($"Invalid type {ExpandTypeName(t)}:\nNot Data: {isData}\nNot Logic: {isLogic}");
       }
@@ -58,59 +56,60 @@ namespace F {
     }
 
     // wrapper around IsLogicInternal that tries a cache hit if prefix starts with "_"
-    static string IsLogic(string prefix, Type t, ImmutableList<Type> parents, ImmutableHashSet<(Type, MemberInfo)>? members, Func<Type, bool>? ApprovedDataFunc) {
-      if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents, members, ApprovedDataFunc);
+    static string IsLogic(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
+      if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents, ApprovedDataFunc);
 
       if (VerifiedLogic.TryGetValue(t, out var b)) return b ? "" : $"{t} not Logic";
-      var isLogic = IsLogicInternal(prefix, t, parents, members, ApprovedDataFunc);
+      var isLogic = IsLogicInternal(prefix, t, parents, ApprovedDataFunc);
       VerifiedLogic = VerifiedLogic.SetItem(t, isLogic=="");
       Debug.WriteLine($"|| IsLogic {t.FullName} {(isLogic == "" ? "True" : "False")}");
       return isLogic;
     }
 
-    static string IsLogicInternal(string prefix, Type t, ImmutableList<Type> parents, ImmutableHashSet<(Type, MemberInfo)>? members, Func<Type, bool>? ApprovedDataFunc) {
+    static string IsLogicInternal(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
       parents = parents.Add(t);
 
-      members ??= GetFieldsAndProperties(t)
+      if (IsRecord(t)) return $"{prefix} cannot be a record";
+
+      ImmutableHashSet<(Type, MemberInfo)>? members = GetFieldsAndProperties(t)
         .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
-        .Where(vt => !vt.memberType.Equals(t))
-        .Where(vt => !parents.Contains(vt.memberType)) // avoid recursion
+        .Where(vt => !vt.memberType.Equals(t) && !parents.Contains(vt.memberType)) // avoid recursion
         .ToImmutableHashSet();
 
       foreach (var (memberType, memberInfo) in members) {
-        if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
+        var pPrefix = $"{prefix} member {memberInfo.Name}";
 
-        if (memberType.IsPrimitive) return $"{prefix}.{memberInfo.Name} cannot be a basic type";
-
-        if (t.IsClass) {
-          var isRecord = t.GetMethod("<Clone>$") is not null;
-          if (isRecord) return $"{prefix} cannot be a record";
-        }
+        if (memberType.IsPrimitive) return $"{pPrefix} cannot be a basic type";
 
         var isState = ImplementsOrDerives(memberType, typeof(IReadOnlyState<>)) || ImplementsOrDerives(memberType, typeof(IState<>));
         if (isState) {
           var isPublic = IsMemeberPublic(memberInfo);
-          if (isPublic) return $"{prefix}.{memberInfo.Name} cannot be a pubic State";
+          if (isPublic) return $"{pPrefix} cannot be a pubic State";
+
+          var genericArgumentsIsData = AreGenericArgumentsData(prefix, t, memberType, parents, ApprovedDataFunc);
+          if (genericArgumentsIsData != "") return genericArgumentsIsData;
+
           continue;
         }
 
-        var isLogic = IsLogic($"{prefix}.{memberInfo.Name}" , memberType, parents.Add(memberType), null, ApprovedDataFunc);
+        var isLogic = IsLogic($"{pPrefix}", memberType, parents.Add(memberType), ApprovedDataFunc);
 
         if (isLogic != "") return isLogic;
       }
 
-      var parameters = GetMethodParameters(t, parents);
-      foreach (var (methodInfo, ps) in parameters) {
-        if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
-
+      var methodsInfoDict = GetMethodsInfoDict(t, parents);
+      foreach (var (methodInfo, ps) in methodsInfoDict) {
         foreach (var p in ps) {
           var isState = ImplementsOrDerives(p.ParameterType, typeof(IReadOnlyState<>)) || ImplementsOrDerives(p.ParameterType, typeof(IState<>));
-          if (isState) continue;
+          if (isState) {
+            var genericArgumentsIsData = AreGenericArgumentsData(prefix, t, p.ParameterType, parents, ApprovedDataFunc);
+            if (genericArgumentsIsData != "") return genericArgumentsIsData;
+            continue;
+          }
 
-          if (p.ParameterType.GetCustomAttribute<FIgnore>() != null) continue;
-
-          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), ApprovedDataFunc);
-          var isLogic = IsLogic($"{prefix}.{methodInfo.Name}_{p.Name}", p.ParameterType, parents.Add(t), null, ApprovedDataFunc);
+          var pPrefix = $"{prefix} method {methodInfo.Name} parameter {p.Name}";
+          var isData = IsData(pPrefix, p.ParameterType, parents.Add(t), ApprovedDataFunc);
+          var isLogic = IsLogic(pPrefix, p.ParameterType, parents.Add(t), ApprovedDataFunc);
           if (isData != "" && isLogic != "") return isData;
         }
       }
@@ -132,14 +131,12 @@ namespace F {
     static string IsDataInternal(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
       if (IsWhitelistedData(t)) return "";
       if (ApprovedDataFunc is object && ApprovedDataFunc(t)) return "";
-      if (t.GetCustomAttribute<FIgnore>() != null) return "";
 
       if (t.IsEnum) return "";
 
       string fullName = t.FullName ?? "", baseFullName = t.BaseType?.FullName ?? "", ns = t.Namespace ?? "", name = t.Name ?? "", baseName = t.BaseType?.Name ?? "";
 
       if (IsCompilerGenerated(t)) return "";
-      if (ns== "F.Collections") return "";
 
       var isAnonymous = name.Contains("AnonymousType");
       if (isAnonymous) return "";
@@ -149,51 +146,40 @@ namespace F {
 
       if (ns == "F.State") return $"{prefix} cannot be a State";
 
-      if (t.IsClass) {
-        var isRecord = t.GetMethod("<Clone>$") is not null;
-        if (!isRecord) return $"{prefix} cannot be a class";
-      }
+        if (!IsRecord(t)) return $"{prefix} cannot be a class";
 
       // check that all generic arguments are Data
-      var genericArgs = t.GetGenericArguments().ToList();
-      if (t.BaseType is object) genericArgs.AddRange(t.BaseType.GetGenericArguments());
-      foreach (var gat in genericArgs) {
-        if (gat == t) continue;
-        if (gat.FullName is null) continue;
-        if (gat.GetCustomAttributes(false).Any(a => a.GetType() == typeof(FIgnore))) continue;
-        var isData = IsData($"{prefix}<{gat.FullName}>", gat, parents.Add(t), ApprovedDataFunc);
-        if (isData != "") return isData;
-      }
+      var genericArgumentsIsData = AreGenericArgumentsData(prefix, t, t, parents, ApprovedDataFunc);
+      if (genericArgumentsIsData != "") return genericArgumentsIsData;
 
+      if (ns== "F.Collections") return "";
+ 
       var fieldsAndProperties = GetFieldsAndProperties(t)
         .Select(vt => (memberType: vt.Item1, memberInfo: vt.Item2))
         .Where(vt => vt.memberType!=t && !parents.Contains(vt.memberInfo)) // avoid recursion
         .Where(vt => !IsConst(vt.memberInfo)) // ignore consts
         .ToImmutableHashSet();
 
-      var methodParameters = GetMethodParameters(t, parents);
+      var methodsInfoDict = GetMethodsInfoDict(t, parents);
 
       // allow classes with no members (ie attributes)
-      if (fieldsAndProperties.IsEmpty && methodParameters.IsEmpty) return "";
-
-      //var isNullable = Nullable.GetUnderlyingType(t) != null;
+      if (fieldsAndProperties.IsEmpty && methodsInfoDict.IsEmpty) return "";
 
       foreach (var (memberType, memberInfo) in fieldsAndProperties) {
-        if (memberInfo.GetCustomAttribute<FIgnore>() != null) continue;
         if ((memberInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
 
-        var isData = IsData($"{prefix}.{memberInfo.Name}", memberType, parents.Add(t), ApprovedDataFunc);
+        var pPrefix = $"{prefix} member {memberInfo.Name}";
+        var isData = IsData($"{pPrefix}", memberType, parents.Add(t), ApprovedDataFunc);
         if (isData != "") return isData;
       }
 
-      foreach (var (methodInfo, ps) in methodParameters) {
-        if (methodInfo.GetCustomAttribute<FIgnore>() != null) continue;
+      foreach (var (methodInfo, ps) in methodsInfoDict) {
         if ((methodInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
 
         foreach (var p in ps) {
-          var pt = p.ParameterType.GetElementType() ?? p.ParameterType;
-          if (pt.GetCustomAttribute<FIgnore>() != null) continue;
-          var isData = IsData($"{prefix}.{methodInfo.Name}_{p.Name}", pt, parents.Add(t), ApprovedDataFunc);
+          var pPrefix = $"{prefix} method {methodInfo.Name} parameter {p.Name}";
+
+          var isData = IsData($"{pPrefix}", p.ParameterType.GetElementType() ?? p.ParameterType, parents.Add(t), ApprovedDataFunc);
           if (isData != "") return isData;
         }
       }
@@ -208,6 +194,8 @@ namespace F {
     }
 
     static bool IsConst(MemberInfo mi) => mi.MemberType == MemberTypes.Field && ((FieldInfo)mi).IsLiteral;
+
+    static bool IsRecord(Type t) => t.IsClass && t.GetMethod("<Clone>$") is not null;
 
     static bool IsWhitelistedData(Type t_) {
       var basic = new Type[] {
@@ -229,41 +217,41 @@ namespace F {
     }
 
     static ImmutableHashSet<(Type, MemberInfo)> GetFieldsAndProperties(Type? type) {
-      if (type is null) return ImmutableHashSet<(Type, MemberInfo)>.Empty; ;
+      if (type is null) return ImmutableHashSet<(Type, MemberInfo)>.Empty;
 
       var bindingFlags = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
 
       var res = type.GetMembers(bindingFlags)
-        .Where(mi => IsFieldOrProperty(mi) && !IsIgnored(mi) && !IsCompilerGenerated(mi))
+        .Where(mi => IsFieldOrProperty(mi) && mi.GetCustomAttribute<FIgnore>() == null && !IsCompilerGenerated(mi))
         .Where(mi => !mi.Name.Contains("EqualityContract"))
-        .Select(mi => (GetUnderlyingType(mi)!, mi))
-        .ToImmutableHashSet();
+        .Select(mi => (type: GetUnderlyingType(mi)!, memberInfo: mi));
 
       // get base class members if any
       if (!Equals(type.BaseType, typeof(object))) res = res.Union(GetFieldsAndProperties(type.BaseType));
 
-      return res;
+      res = res.Where(vt => vt.memberInfo.GetCustomAttribute<FIgnore>() == null);
+      return res.ToImmutableHashSet();
     }
 
-    static ImmutableDictionary<MethodBase, ImmutableHashSet<ParameterInfo>> GetMethodParameters(Type? type, ImmutableList<Type> parents) {
+    static ImmutableDictionary<MethodBase, ImmutableHashSet<ParameterInfo>> GetMethodsInfoDict(Type? type, ImmutableList<Type> parents) {
       var res = ImmutableDictionary<MethodBase, ImmutableHashSet<ParameterInfo>>.Empty;
       if (type is null) return res;
-
+      var n = type.Name;
       var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
         .Where(m => !m.IsSpecialName)
         .Where(m => !m.Name.StartsWith('<'))
-        .Select(m => (MethodBase)m)
+        .Select(m => (MethodBase)m) // so that we can add constructors
         .ToImmutableList()
         .AddRange(type.GetConstructors()) // can be unremarked when record ctors have CompilerGenerated
         .Where(m => m.GetCustomAttribute<CompilerGeneratedAttribute>() == null);
 
       foreach (var methodInfo in methods) {
         var ps = methodInfo.GetParameters()
-          .ToImmutableList()
           // .Add(methodInfo.ReturnParameter)
           .Where(p => p.GetCustomAttribute<FIgnore>() == null)
           .Where(p => !parents.Contains(p.ParameterType)) // ignore cyclic dependencies
-          .Where(p => !p.ParameterType.Equals(type)); // ignore self reference
+          .Where(p => !p.ParameterType.Equals(type)) // ignore self reference
+          .Where(p => p.GetCustomAttribute<FIgnore>() == null);
 
         res = res.Add(methodInfo, ps.ToImmutableHashSet());
       }
@@ -275,7 +263,6 @@ namespace F {
 
     //static bool IsBackingField(MemberInfo mi) => mi is FieldInfo && mi.GetCustomAttribute<CompilerGeneratedAttribute>() == null;
 
-    static bool IsIgnored(MemberInfo mi) => mi.GetCustomAttribute<FIgnore>() != null;
 
     static bool IsCompilerGenerated(MemberInfo mi) =>
       mi.GetCustomAttribute<CompilerGeneratedAttribute>() != null
@@ -315,6 +302,21 @@ namespace F {
         MemberTypes.Property => ((PropertyInfo)member).PropertyType,
         _ => null
       };
+    }
+
+    // check that all generic arguments are Data
+    static string AreGenericArgumentsData(string prefix, Type t, Type memberType, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc)
+    {
+      var genericArgs = memberType.GetGenericArguments().ToList();
+      if (memberType.BaseType is object) genericArgs.AddRange(memberType.BaseType.GetGenericArguments());
+      foreach (var gat in genericArgs) {
+        if (gat == t) continue;
+        if (gat.FullName is null) continue;
+        if (gat.GetCustomAttribute<FIgnore>() != null) continue;
+        var isData = IsData($"{prefix} generic parameter {gat.Name}", gat, parents.Add(t), ApprovedDataFunc);
+        if (isData != "") return isData;
+      }
+      return "";
     }
 
     /*

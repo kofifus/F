@@ -12,7 +12,7 @@ namespace F.State {
   
   // readonly access to val without initiating side effects
   public interface IReadOnlyState<T> {
-    T Get();
+    T Val();
 
     IReadOnlyState<TMember> Lens<TMember>(Func<T, TMember> lensGetter); // lens to a member of T
   }
@@ -22,9 +22,9 @@ namespace F.State {
     public delegate void ActionRef<U>(ref U r1);
     public delegate RES FuncRef<U, RES>(ref U r1);
 
-    T Get();
-    void Set(ActionRef<T> f);
-    TRES Set<TRES>(FuncRef<T, TRES> f);
+    T Val();
+    void Val(ActionRef<T> f);
+    TRES Val<TRES>(FuncRef<T, TRES> f);
 
     IReadOnlyState<T> ToIReadOnlyState { get; }
     IReadOnlyState<TMember> Lens<TMember>(Func<T, TMember> lensGetter) => ToIReadOnlyState.Lens(lensGetter); // lens to a member of T
@@ -33,15 +33,15 @@ namespace F.State {
   // T1, T2 etc are assumed to be Data (immutable with value semantics)
 
   public interface IReadOnlyState<T1, T2> {
-    (T1, T2) Get();
+    (T1, T2) Val();
   }
 
   public interface IState<T1, T2>  {
     public delegate void ActionRef<U1, U2>(ref U1 r1, ref U2 r2);
     public delegate RES FuncRef<U1, U2, RES>(ref U1 r1, ref U2 r2);
 
-    void Set(ActionRef<T1, T2> f);
-    TRES Set<TRES>(FuncRef<T1, T2, TRES> f);
+    void Val(ActionRef<T1, T2> f);
+    TRES Val<TRES>(FuncRef<T1, T2, TRES> f);
   }
 
   abstract public class State<T> : IReadOnlyState<T>, IState<T>, IEquatable<State<T>> {
@@ -54,21 +54,21 @@ namespace F.State {
 
     public State(T value) => Value = value;
 
-    public virtual T Get() {
+    public virtual T Val() {
       PreGet();
       var res = Value;
       PostGet();
       return res;
     }
 
-    public virtual void Set(IState<T>.ActionRef<T> f) {
+    public virtual void Val(IState<T>.ActionRef<T> f) {
       var preRefData = PreSet(Value);
       var preValue = Value;
       try { f(ref Value); }
       finally { PostSet(preValue, Value, preRefData); }
     }
 
-    public virtual TRES Set<TRES>(IState<T>.FuncRef<T, TRES> f) {
+    public virtual TRES Val<TRES>(IState<T>.FuncRef<T, TRES> f) {
       var preRefData = PreSet(Value);
       var preValue = Value;
       try { return f(ref Value); }
@@ -113,21 +113,21 @@ namespace F.State {
         State1.PostSet(preState1, postState1, preData1);
       }
 
-      public (T, T2) Get() {
+      public (T, T2) Val() {
         PreGet();
-        var res = (State1.Get(), State2.Get());
+        var res = (State1.Val(), State2.Val());
         PostGet();
         return res;
       }
 
-      public void Set(IState<T, T2>.ActionRef<T, T2> f) {
+      public void Val(IState<T, T2>.ActionRef<T, T2> f) {
         var preData = PreSet(State1.Value, State2.Value);
         var preState = (State1.Value, State2.Value);
         try { f(ref State1.Value, ref State2.Value); }
         finally { PostSet(preState.Item1, State1.Value, preState.Item2, State2.Value, preData); }
       }
 
-      public TRES Set<TRES>(IState<T, T2>.FuncRef<T, T2, TRES> f) {
+      public TRES Val<TRES>(IState<T, T2>.FuncRef<T, T2, TRES> f) {
         var preData = PreSet(State1.Value, State2.Value);
         var preState = (State1.Value, State2.Value);
         try { return f(ref State1.Value, ref State2.Value); }
@@ -155,7 +155,7 @@ namespace F.State {
       public LensValState(IReadOnlyState<T> tStateVal, Func<T, TMember> lensGetter)
         => (TStateVal, LensGetter) = (tStateVal, lensGetter);
 
-      public TMember Get() => LensGetter(TStateVal.Get());
+      public TMember Val() => LensGetter(TStateVal.Val());
 
       public IReadOnlyState<TMember1> Lens<TMember1>(Func<TMember, TMember1> lensGetter)
         => new State<TMember>.LensValState<TMember1>(this, lensGetter);
@@ -221,8 +221,8 @@ namespace F.State {
     public event Action<T>? PreRefEvent;
     public event Action<T, T>? PostRefEvent;
 
-    override protected void PreGet() => PreValEvent?.Invoke(Get());
-    override protected void PostGet() => PostValEvent?.Invoke(Get());
+    override protected void PreGet() => PreValEvent?.Invoke(Val());
+    override protected void PostGet() => PostValEvent?.Invoke(Val());
     override protected object? PreSet(in T preVal) { PreRefEvent?.Invoke(preVal); return null; }
     override protected void PostSet(in T preVal, in T postVal, object? _) => PostRefEvent?.Invoke(preVal, postVal);
   }

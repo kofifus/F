@@ -782,7 +782,7 @@ namespace F.Collections {
     public Arr(params T?[] v) : base(v) { }
   }
 
-
+  [FIgnore]
   class JsonFCollectionConverter : JsonConverter {
     static PropertyInfo GetCompositor(Type? t) {
       while (t != null) {
