@@ -22,47 +22,55 @@ namespace F {
 
     static ImmutableDictionary<Type,bool> VerifiedLogic = ImmutableDictionary<Type, bool>.Empty;
     static ImmutableDictionary<Type,bool> VerifiedData = ImmutableDictionary<Type, bool>.Empty;
+    static readonly Type[] AllTypes = Assembly.GetExecutingAssembly().GetTypes();
+    static Func<Type, bool>? CustomIgnoreFunc = null;
+    static Func<Type, bool>? ApprovedDataFunc = null;
 
-    public static void FValidate(Func<Type, bool>? customIgnoreFunc=null, Func<Type, bool>? ApprovedDataFunc=null) {
+    static bool IgnoreFunc(Type t) {
+      string fn = t.FullName ?? t.Name, ns = t.Namespace ?? "";
+      if (ns == "F" || ns.StartsWith("F.State")) return true;
+      if (fn.StartsWith("Microsoft.CodeAnalysis")
+        || fn.StartsWith("System.Runtime.CompilerServices")
+        || fn.StartsWith("<>f__AnonymousType")) return true;
+      return CustomIgnoreFunc is not null && CustomIgnoreFunc(t);
+    }
+
+    public static void FValidate(Func<Type, bool>? customIgnoreFunc=null, Func<Type, bool>? approvedDataFunc=null) {
 #if DEBUG
+      CustomIgnoreFunc = customIgnoreFunc;
+      ApprovedDataFunc = approvedDataFunc;
 
-      bool IgnoreFunc(Type t) {
-        string fn = t.FullName ?? t.Name, ns = t.Namespace ?? "";
-        if (ns == "F" || ns.StartsWith("F.State")) return true;
-        if (fn.StartsWith("Microsoft.CodeAnalysis")
-          || fn.StartsWith("System.Runtime.CompilerServices")
-          || fn.StartsWith("<>f__AnonymousType")) return true;
-        return customIgnoreFunc is not null && customIgnoreFunc(t);
-      }
-
-      foreach (var t in Assembly.GetExecutingAssembly().GetTypes()) {
-        if (IgnoreFunc(t)) continue;
-        if (t.GetCustomAttribute<FIgnore>() != null) continue;
-
-        var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
-        if (isLogic == "") continue;
-        var isData = IsData($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
-        if (isData == "") continue;
-
-        // we now call again to retrieve the correct message
-        isLogic = IsLogic(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
-        isData = IsData(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
-        throw new($"Invalid type {ExpandTypeName(t)}:\nNot Data: {isData}\nNot Logic: {isLogic}");
-      }
+      foreach (var t in AllTypes) FValidate(t);
 
       VerifiedLogic = ImmutableDictionary<Type, bool>.Empty;
       VerifiedData = ImmutableDictionary<Type, bool>.Empty;
 #endif
     }
 
+    public static void FValidate(Type t) {
+      if (IgnoreFunc(t)) return;
+      if (t.GetCustomAttribute<FIgnore>() != null) return;
+
+      var isLogic = IsLogic($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+      if (isLogic == "") return;
+      var isData = IsData($"_{t.Name}", t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+      if (isData == "") return;
+
+      // we now call again to retrieve the correct message
+      isLogic = IsLogic(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+      isData = IsData(t.Name, t, ImmutableList<Type>.Empty, ApprovedDataFunc);
+      throw new($"Invalid type {ExpandTypeName(t)}:\nNot Data: {isData}\nNot Logic: {isLogic}");
+    }
+
     // wrapper around IsLogicInternal that tries a cache hit if prefix starts with "_"
     static string IsLogic(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
-      if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents, ApprovedDataFunc);
+      if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents, ApprovedDataFunc); // don't use cache
+      if (VerifiedLogic.TryGetValue(t, out var verified)) return verified ? "" : $"{prefix}{t} not Logic"; // try a cache hit
 
-      if (VerifiedLogic.TryGetValue(t, out var b)) return b ? "" : $"{t} not Logic";
+      if (parents.Count>0 && AllTypes.Contains(t)) FValidate(t); // new type
       var isLogic = IsLogicInternal(prefix, t, parents, ApprovedDataFunc);
       VerifiedLogic = VerifiedLogic.SetItem(t, isLogic=="");
-      Debug.WriteLine($"|| IsLogic {t.FullName} {(isLogic == "" ? "True" : "False")}");
+      //Debug.WriteLine($"|| IsLogic {t.FullName} {(isLogic == "" ? "True" : "False")}");
       return isLogic;
     }
 
@@ -119,12 +127,13 @@ namespace F {
 
     // wrapper around IsDataInternal that tries a cache hit if prefix starts with "_"
     static string IsData(string prefix, Type t, ImmutableList<Type> parents, Func<Type, bool>? ApprovedDataFunc) {
-      if (!prefix.StartsWith("_")) return IsDataInternal(prefix, t, parents, ApprovedDataFunc);
+      if (!prefix.StartsWith("_")) return IsDataInternal(prefix, t, parents, ApprovedDataFunc); // don't use cache
+      if (VerifiedData.TryGetValue(t, out var verified)) return verified ? "" : $"{prefix}{t} not Data"; // try a cache hit
 
-      if (VerifiedData.TryGetValue(t, out var b)) return b ? "" : $"{t} not Data";
+      if (parents.Count>0 && AllTypes.Contains(t)) FValidate(t); // new type
       var isData = IsDataInternal(prefix, t, parents, ApprovedDataFunc);
       VerifiedData = VerifiedData.SetItem(t, isData=="");
-      Debug.WriteLine($"|| IsData {t.FullName} {(isData == "" ? "True" : "False")}");
+      //Debug.WriteLine($"|| IsData {t.FullName} {(isData == "" ? "True" : "False")}");
       return isData;
     }
 
@@ -146,7 +155,7 @@ namespace F {
 
       if (ns == "F.State") return $"{prefix} cannot be a State";
 
-        if (!IsRecord(t)) return $"{prefix} cannot be a class";
+      if (!IsRecord(t)) return $"{prefix} cannot be a class";
 
       // check that all generic arguments are Data
       var genericArgumentsIsData = AreGenericArgumentsData(prefix, t, t, parents, ApprovedDataFunc);
@@ -175,7 +184,11 @@ namespace F {
 
       foreach (var (methodInfo, ps) in methodsInfoDict) {
         if ((methodInfo.DeclaringType?.Namespace ?? "") == "F.Collections") continue;
-
+        if (methodInfo.Name == "GetHashCode") return $"{prefix} cannot have GetHashCode()";
+        if (methodInfo.Name == "Equals") {
+          var pars = methodInfo.GetParameters();
+          if (pars.Length==1 && pars.First().ParameterType== t) return $"{prefix} cannot have Equals(T)";
+        }
         foreach (var p in ps) {
           var pPrefix = $"{prefix} method {methodInfo.Name} parameter {p.Name}";
 
@@ -243,8 +256,9 @@ namespace F {
         .Select(m => (MethodBase)m) // so that we can add constructors
         .ToImmutableList()
         .AddRange(type.GetConstructors()) // can be unremarked when record ctors have CompilerGenerated
-        .Where(m => m.GetCustomAttribute<CompilerGeneratedAttribute>() == null);
-
+        .Where(m => m.GetCustomAttribute<CompilerGeneratedAttribute>() == null)
+        .Where(m => m.GetCustomAttribute<FIgnore>() == null);
+        
       foreach (var methodInfo in methods) {
         var ps = methodInfo.GetParameters()
           // .Add(methodInfo.ReturnParameter)
