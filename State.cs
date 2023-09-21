@@ -44,15 +44,13 @@ namespace F.State {
     TRES Val<TRES>(FuncRef<T1, T2, TRES> f);
   }
 
-  abstract public class State<T> : IReadOnlyState<T>, IState<T>, IEquatable<State<T>> {
-    T Value;
+  abstract public class State<T>(T value) : IReadOnlyState<T>, IState<T>, IEquatable<State<T>> {
+    T Value = value;
 
     virtual protected void PreGet() { }
     virtual protected void PostGet() { }
     virtual protected object? PreSet(in T preState) => null; // result will be passed to PostRef
     virtual protected void PostSet(in T preState, in T postState, object? PreData) { }
-
-    public State(T value) => Value = value;
 
     public virtual T Val() {
       PreGet();
@@ -163,15 +161,12 @@ namespace F.State {
   }
 
   // simplest state implementation, does nothing
-  public class SimpleState<T> : State<T> {
-    public SimpleState(T value) : base(value) { }
+  public class SimpleState<T>(T value) : State<T>(value) {
   }
 
 
   // lock during Ref
-  public class LockedState<T> : State<T> {
-    public LockedState(T value) : base(value) { }
-
+  public class LockedState<T>(T value) : State<T>(value) {
     readonly object theLock = new();
     override protected void PreGet() => Monitor.Enter(theLock);
     override protected void PostGet() => Monitor.Exit(theLock);
@@ -180,15 +175,12 @@ namespace F.State {
 
   }
 
-  public class LockedState<T1, T2> : State<T1>.Combine<T2> {
-    public LockedState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
+  public class LockedState<T1, T2>(State<T1> vstate1, State<T2> vstate2) : State<T1>.Combine<T2>(vstate1, vstate2) {
   }
 
 
   // lock during Ref then store the change in the Journal
-  public class JournalLockedState<T> : State<T> {
-    public JournalLockedState(T value) : base(value) { }
-
+  public class JournalLockedState<T>(T value) : State<T>(value) {
     readonly object theLock = new();
     public Lst<T> Journal = new();
 
@@ -208,14 +200,11 @@ namespace F.State {
     }
   }
 
-  public class JournalLockedState<T1, T2> : State<T1>.Combine<T2> {
-    public JournalLockedState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
+  public class JournalLockedState<T1, T2>(State<T1> vstate1, State<T2> vstate2) : State<T1>.Combine<T2>(vstate1, vstate2) {
   }
 
   // allow registering events that get invoked before/after a Ref
-  public class ObserverState<T> : State<T> {
-    public ObserverState(T value) : base(value) { }
-
+  public class ObserverState<T>(T value) : State<T>(value) {
     public event Action<T>? PreValEvent;
     public event Action<T>? PostValEvent;
     public event Action<T>? PreRefEvent;
@@ -227,8 +216,7 @@ namespace F.State {
     override protected void PostSet(in T preVal, in T postVal, object? _) => PostRefEvent?.Invoke(preVal, postVal);
   }
 
-  public class ObserverState<T1, T2> : State<T1>.Combine<T2> {
-    public ObserverState(State<T1> vstate1, State<T2> vstate2) : base(vstate1, vstate2) { }
+  public class ObserverState<T1, T2>(State<T1> vstate1, State<T2> vstate2) : State<T1>.Combine<T2>(vstate1, vstate2) {
   }
 
 }
