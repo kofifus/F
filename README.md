@@ -149,8 +149,7 @@ Newer language features (records, refs, lambdas etc) allow better functional pro
   ```
 
   The Validator though optional is in many ways the heart of `F`. While it will definitely work to mix in elements 
-of `F`  
-into a project, ideally the entire code base is structured to decouple Data State and Logic using `F` throughout  
+of `F` into a project, ideally the entire code base is structured to decouple Data State and Logic using `F` throughout  
 and calling `Validator.Run()` for validating.<br><br>
 Inevitably in many cases, some .NET types that are not `Data` have to be used. In some of these cases it  
 is possible to encapsulate these types inside a `Data` type and move their mutable part to a `State`.  
