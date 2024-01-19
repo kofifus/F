@@ -158,9 +158,9 @@ immutable) and have to be managed carefully using `[FIgnore]`.
 <br><br>
 ## Installation
 
-Add the `.cs` files to your project
-
-In your sources add `using F;`
+- Add the `.cs` files to your project
+- In your sources add `using F;`
+- call `Validator.Run()` at program start
 <br><br>
 ## License
 
