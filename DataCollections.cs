@@ -831,7 +831,7 @@ namespace F.Collections {
 }
 
 namespace System.Linq {
-using F.Collections;
+  using F.Collections;
 
   public static class CollectionsExtensionsMethods {
     public static Lst<T> ToLst<T>(this IEnumerable<T> source) => LstBase<Lst<T>, T>.New(source.ToImmutableList());
