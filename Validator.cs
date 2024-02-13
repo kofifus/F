@@ -34,7 +34,7 @@ public static class Validator {
     if (t.IsEnum) return true;
     if (n.Contains("AnonymousType")) return true;
     if (t.BaseType == typeof(Attribute)) return true;
-    if (n.StartsWith("<")) return true;
+    if (n.StartsWith('<')) return true;
     if (typeof(Delegate).IsAssignableFrom(t)) return true;
 
     if (CustomIgnoreFunc is not null && CustomIgnoreFunc(t)) return true;
@@ -59,19 +59,19 @@ public static class Validator {
     var name = t.Name;
 
     if (IsRecord(t)) {
-      if (IsData($"_{name}", t, ImmutableList<Type>.Empty) == "") return;
-      var msg = IsData(name, t, ImmutableList<Type>.Empty);
+      if (IsData($"_{name}", t, []) == "") return;
+      var msg = IsData(name, t, []);
       throw new($"Data record {msg}");
     } else {
-      if (IsLogic($"_{name}", t, ImmutableList<Type>.Empty) == "") return;
-      var msg = IsLogic(name, t, ImmutableList<Type>.Empty);
+      if (IsLogic($"_{name}", t, []) == "") return;
+      var msg = IsLogic(name, t, []);
       throw new($"Logic class {msg}");
     }
   }
 
   // wrapper around IsDataInternal that tries a cache hit if prefix starts with "_"
   static string IsData(string prefix, Type t, ImmutableList<Type> parents) {
-    if (!prefix.StartsWith("_")) return IsDataInternal(prefix, t, parents); // don't use cache
+    if (!prefix.StartsWith('_')) return IsDataInternal(prefix, t, parents); // don't use cache
     if (VerifiedData.TryGetValue(t, out var verified)) return verified ? "" : $"{prefix}{t} not Data"; // try a cache hit
 
     if (parents.Count > 0 && AllTypes.Contains(t)) FValidate(t); // new type
@@ -140,7 +140,7 @@ public static class Validator {
 
   // wrapper around IsLogicInternal that tries a cache hit if prefix starts with "_"
   static string IsLogic(string prefix, Type t, ImmutableList<Type> parents) {
-    if (!prefix.StartsWith("_")) return IsLogicInternal(prefix, t, parents); // don't use cache
+    if (!prefix.StartsWith('_')) return IsLogicInternal(prefix, t, parents); // don't use cache
     if (VerifiedLogic.TryGetValue(t, out var verified)) return verified ? "" : $"{prefix}{t} not Logic"; // try a cache hit
 
     if (parents.Count > 0 && AllTypes.Contains(t)) FValidate(t); // new type
@@ -235,7 +235,7 @@ public static class Validator {
   }
 
   static ImmutableHashSet<(Type, MemberInfo)> GetFieldsAndProperties(Type? type) {
-    if (type is null) return ImmutableHashSet<(Type, MemberInfo)>.Empty;
+    if (type is null) return [];
 
     var bindingFlags = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
 
@@ -329,8 +329,9 @@ public static class Validator {
     var genericArgs = memberType.GetGenericArguments().ToList();
     if (memberType.BaseType is object) genericArgs.AddRange(memberType.BaseType.GetGenericArguments());
     foreach (var gat in genericArgs) {
-      if (gat == t) continue;
       if (gat.FullName is null) continue;
+      if (gat == t) continue;
+      if (parents.Contains(gat)) continue; // avoid recursion
       if (gat.GetCustomAttribute<FIgnore>() != null) continue;
       var isData = IsData($"{prefix} generic parameter {gat.Name}", gat, parents.Add(t));
       if (isData != "") return isData;
