@@ -21,8 +21,8 @@ namespace F.Collections {
     protected ImmutableList<T> Composed { get; init; }
     protected HashCode? HashCache;
 
-    public LstBase() => Composed = ImmutableList<T>.Empty;
-    public LstBase(params T?[] v) => Composed = ImmutableList<T>.Empty.AddRange(v.Where(x => x is object)!);
+    public LstBase() => Composed = [];
+    public LstBase(params T?[] v) => Composed = [.. v.Where(x => x is object)!];
     public LstBase(Lst<T> v) => Composed = v.Composed;
 
     public static TDerived New(ImmutableList<T> v) => new() { Composed = v }; // also used for json deserialization
@@ -193,7 +193,7 @@ namespace F.Collections {
     protected ImmutableHashSet<T> Composed { get; init; }
     protected HashCode? HashCache;
 
-    public SetBase() => Composed = ImmutableHashSet<T>.Empty;
+    public SetBase() => Composed = [];
     public SetBase(params T?[] v) => Composed = ImmutableHashSet<T>.Empty.Union(v.Where(t => t is object)!);
     public SetBase(Set<T> v) => Composed = v.Composed;
 
@@ -277,7 +277,7 @@ namespace F.Collections {
     protected ImmutableSortedSet<T> Composed { get; init; }
     protected HashCode? HashCache;
 
-    public OrderedSetBase() => Composed = ImmutableSortedSet<T>.Empty;
+    public OrderedSetBase() => Composed = [];
     public OrderedSetBase(params T?[] p) => Composed = ImmutableSortedSet<T>.Empty.Union(p.Where(t => t is object)!);
     public OrderedSetBase(OrderedSet<T> v) => Composed = v.Composed;
 
@@ -574,7 +574,7 @@ namespace F.Collections {
     protected ImmutableQueue<T> Composed { get; init; }
     protected HashCode? HashCache;
 
-    public QueBase() => Composed = ImmutableQueue<T>.Empty;
+    public QueBase() => Composed = [];
     public QueBase(params T?[] v) => Composed = v.Aggregate(ImmutableQueue<T>.Empty, (t, v) => v is null ? t : t.Enqueue(v));
     public QueBase(Que<T> v) => Composed = v.Composed;
 
@@ -639,8 +639,8 @@ namespace F.Collections {
     protected ImmutableArray<T> Composed { get; init; }
     protected HashCode? HashCache;
 
-    public ArrBase() => Composed = ImmutableArray<T>.Empty; 
-    public ArrBase(params T?[] p) => Composed = ImmutableArray<T>.Empty.AddRange(p.Where(x => x is object)!); 
+    public ArrBase() => Composed = []; 
+    public ArrBase(params T?[] p) => Composed = [.. p.Where(x => x is object)!]; 
     public ArrBase(Arr<T> v) => Composed = v.Composed;
 
     public static TDerived New(ImmutableArray<T> p) => new() { Composed = p }; // also used for json deserialization
@@ -794,7 +794,7 @@ namespace F.Collections {
     }
 
     public override bool CanConvert(Type? t) {
-      var fields = t?.BaseType?.GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(fi => fi.Name == "Composed") ?? Enumerable.Empty<FieldInfo>();
+      var fields = t?.BaseType?.GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(fi => fi.Name == "Composed") ?? [];
       return fields.Count() == 1;
     }
 
@@ -805,7 +805,7 @@ namespace F.Collections {
       var compositorType = compositor.PropertyType;
       var compositorValue = serializer.Deserialize(reader, compositorType) ?? throw new JsonSerializationException();
       try {
-        return Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new object[] { compositorValue }, null); // try ctor
+        return Activator.CreateInstance(objectType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, [compositorValue], null); // try ctor
       }
       catch (Exception) { // try empty ctor
         try {
@@ -814,9 +814,9 @@ namespace F.Collections {
           return instance;
         }
         catch (Exception) { // try calling New
-          var factory = objectType.GetMethod("New", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy, new Type[] { compositorType });
+          var factory = objectType.GetMethod("New", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy, [compositorType]);
           if (factory is null) throw;
-          return factory.Invoke(null, new object[] { compositorValue }); // first try using New method if exists
+          return factory.Invoke(null, [compositorValue]); // first try using New method if exists
         }
       }
     }
