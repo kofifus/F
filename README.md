@@ -1,5 +1,5 @@
 # F
-C# support for decoupling Data, State and Logic
+A very opininated C# functional framework for decoupling Data, State and Logic
 <br><br>
 
 C# was developed as an OOP language where data, state and logic are strongly coupled in instances   
@@ -92,7 +92,8 @@ Newer language features (records, refs, lambdas etc) allow better functional pro
   `JohnStateRW` is a thread safe read/write access to the State that can be passed around.  
   `.Val((red ...)` locks the state to allow mutation. Importantly it is the _only_ way to mutate the Data in a `johnState `.  
   <br>
-  `.ToIReadOnlyState` and `.ToIState` are recommended but optional and serve to make the intention (read-only vs read/write) explicit. 
+  `.ToIReadOnlyState` and `.ToIState` are recommended but optional and serve to make the intention (read-only vs read/write) explicit.
+  `IState`s are really only useful as parameter to `Logic` classes constructors.
 <br/>
 
 - [Logic](https://github.com/kofifus/F/wiki/Logic) - a C# `class` that is initialized with access to specific states, this saves passing the state to each API call  
